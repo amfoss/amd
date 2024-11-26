@@ -15,15 +15,19 @@ GNU General Public License for more details.
 You should have received a copy of the GNU General Public License
 along with this program.  If not, see <https://www.gnu.org/licenses/>.
 */
-use serenity::all::{ChannelId, Context, Message};
 
+use serenity::all::{ChannelId, Context, Message};
 use crate::{
     ids::{
         GROUP_FOUR_CHANNEL_ID, GROUP_ONE_CHANNEL_ID, GROUP_THREE_CHANNEL_ID, GROUP_TWO_CHANNEL_ID,
         STATUS_UPDATE_CHANNEL_ID,
     },
-    utils::{graphql::fetch_members, time::get_five_am_timestamp},
+    utils::{
+        graphql::{fetch_members, send_streak_update},
+        time::get_five_am_timestamp,
+    },
 };
+use chrono::Duration;
 
 pub async fn check_status_updates(ctx: Context) {
     let members = fetch_members().await.expect("Root must be up.");
@@ -37,7 +41,7 @@ pub async fn check_status_updates(ctx: Context) {
 
     let time = chrono::Local::now().with_timezone(&chrono_tz::Asia::Kolkata);
     let today_five_am = get_five_am_timestamp(time);
-    let yesterday_five_am = today_five_am - chrono::Duration::hours(24);
+    let yesterday_five_am = today_five_am - Duration::hours(24);
 
     let mut valid_updates: Vec<Message> = vec![];
 
@@ -68,12 +72,20 @@ pub async fn check_status_updates(ctx: Context) {
         let name_parts: Vec<&str> = member.split_whitespace().collect();
         let first_name = name_parts.get(0).unwrap_or(&"");
         let last_name = name_parts.get(1).unwrap_or(&"");
-        let has_sent_update = valid_updates
-            .iter()
-            .any(|msg| msg.content.contains(first_name) || msg.content.contains(last_name));
+
+        let has_sent_update = valid_updates.iter().any(|msg| {
+            let msg_author = &msg.author.name.to_lowercase();
+            msg_author.contains(first_name.to_lowercase().as_str())
+                || msg_author.contains(last_name.to_lowercase().as_str())
+        });
 
         if !has_sent_update {
-            naughty_list.push(member.to_string());
+            naughty_list.push(member.clone());
+        }
+        
+        match send_streak_update("https://root.shuttleapp.rs/", member.parse().unwrap_or(0), has_sent_update).await {
+            Ok(_) => println!("Successfully updated streak for {}", member),
+            Err(e) => println!("Failed to update streak for {}: {:?}", member, e),
         }
     }
 
@@ -82,7 +94,8 @@ pub async fn check_status_updates(ctx: Context) {
     if naughty_list.is_empty() {
         status_update_channel
             .say(ctx.http, "Everyone sent their update today!")
-            .await;
+            .await
+            .expect("Failed to send message");
     } else {
         let formatted_list = naughty_list
             .iter()
@@ -98,6 +111,7 @@ pub async fn check_status_updates(ctx: Context) {
                     formatted_list
                 ),
             )
-            .await;
+            .await
+            .expect("Failed to send message");
     }
 }

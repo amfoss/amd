@@ -16,6 +16,7 @@ You should have received a copy of the GNU General Public License
 along with this program.  If not, see <https://www.gnu.org/licenses/>.
 */
 use serde_json::Value;
+use anyhow::{Result};
 
 const REQUEST_URL: &str = "https://root.shuttleapp.rs/";
 
@@ -38,10 +39,48 @@ pub async fn fetch_members() -> Result<Vec<String>, reqwest::Error> {
 
     let member_names: Vec<String> = json["data"]["getMember"]
         .as_array()
-        .unwrap()
+        .unwrap_or(&vec![])
         .iter()
         .map(|member| member["name"].as_str().unwrap().to_string())
         .collect();
 
     Ok(member_names)
+}
+
+pub async fn send_streak_update(
+    root_api_url: &str,
+    id: i32,
+    has_sent_update: bool,
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    let client = reqwest::Client::new();
+    let query = format!(
+        r#"
+        mutation {{
+            updateStreak(id: {}, hasSentUpdate: {}) {{
+                id
+                streak
+                max_streak
+            }}
+        }}
+        "#,
+        id, has_sent_update
+    );
+    let response = client
+        .post(root_api_url)
+        .header("Content-Type", "application/json")
+        .body(query)
+        .send()
+        .await?;
+
+    if response.status().is_success() {
+        println!("Successfully updated streak for ID {}", id);
+        Ok(())
+    } else {
+        Err(anyhow::anyhow!(
+            "Failed to update streak for ID {}. HTTP status: {}",
+            id,
+            response.status()
+        )
+        .into())
+    }
 }
