@@ -20,7 +20,8 @@ use serenity::all::{ChannelId, Context, Message};
 use crate::{
     graphql::queries::fetch_members,
     ids::{
-        GROUP_FOUR_CHANNEL_ID, GROUP_ONE_CHANNEL_ID, GROUP_THREE_CHANNEL_ID, GROUP_TWO_CHANNEL_ID,
+        GROUP_FOUR_CHANNEL_ID, GROUP_THREE_CHANNEL_ID, GROUP_TWO_CHANNEL_ID,
+        GROUP_ONE_CHANNEL_ID,
         STATUS_UPDATE_CHANNEL_ID,
     },
     utils::{
@@ -69,7 +70,7 @@ pub async fn check_status_updates(ctx: Context) {
 
     let mut naughty_list: Vec<String> = vec![];
 
-    for member in &members {
+    for (member,id) in &members {
         let name_parts: Vec<&str> = member.split_whitespace().collect();
         let first_name = name_parts.get(0).unwrap_or(&"");
         let last_name = name_parts.get(1).unwrap_or(&"");
@@ -83,8 +84,8 @@ pub async fn check_status_updates(ctx: Context) {
         if !has_sent_update {
             naughty_list.push(member.clone());
         }
-        
-        match send_streak_update("https://root.shuttleapp.rs/", member.parse().unwrap_or(0), has_sent_update).await {
+
+        match send_streak_update("https://root.shuttleapp.rs/", *id, has_sent_update).await {
             Ok(_) => println!("Successfully updated streak for {}", member),
             Err(e) => println!("Failed to update streak for {}: {:?}", member, e),
         }
@@ -94,7 +95,7 @@ pub async fn check_status_updates(ctx: Context) {
 
     if naughty_list.is_empty() {
         status_update_channel
-            .say(ctx.http, "Everyone sent their update today!")
+            .say(ctx.http, "Everyone sent their update in the last 1 minutes!")
             .await
             .expect("Failed to send message");
     } else {
@@ -108,7 +109,7 @@ pub async fn check_status_updates(ctx: Context) {
             .say(
                 ctx.http,
                 format!(
-                    "These members did not send their updates:\n{}",
+                    "These members did not send their updates in the last 3 minutes:\n{}",
                     formatted_list
                 ),
             )

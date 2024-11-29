@@ -22,7 +22,7 @@ use super::models::Member;
 
 const REQUEST_URL: &str = "https://root.shuttleapp.rs/";
 
-pub async fn fetch_members() -> Result<Vec<String>, reqwest::Error> {
+pub async fn fetch_members() -> Result<Vec<(String, i32)>, reqwest::Error> {
     let client = reqwest::Client::new();
     let query = r#"
     query {
@@ -30,6 +30,8 @@ pub async fn fetch_members() -> Result<Vec<String>, reqwest::Error> {
             name,
             groupId,
             discordId
+            name
+            id
         }
     }"#;
 
@@ -41,50 +43,63 @@ pub async fn fetch_members() -> Result<Vec<String>, reqwest::Error> {
 
     let json: Value = response.json().await?;
 
-    let member_names: Vec<String> = json["data"]["getMember"]
+    let member_names: Vec<(String, i32)> = json["data"]["getMember"]
         .as_array()
         .unwrap_or(&vec![])
         .iter()
-        .map(Member)
+        .map(|member| {
+            let id = member["id"].as_i64().unwrap_or(0) as i32;
+            let name = member["name"].as_str().unwrap_or("").to_string();
+            (name, id)
+        })
         .collect();
 
     Ok(member_names)
 }
 
 pub async fn send_streak_update(
-    root_api_url: &str,
-    id: i32,
+    root_api_url: &str, 
+    id: i32, 
     has_sent_update: bool,
-) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+) -> Result<(), Box<dyn std::error::Error>> {
     let client = reqwest::Client::new();
-    let query = format!(
-        r#"
-        mutation {{
-            updateStreak(id: {}, hasSentUpdate: {}) {{
+    let query = r#"
+        mutation updateStreak($id: Int!, $hasSentUpdate: Boolean!) {
+            updateStreak(id: $id, hasSentUpdate: $hasSentUpdate) {
                 id
                 streak
-                max_streak
-            }}
-        }}
-        "#,
-        id, has_sent_update
-    );
+                maxStreak
+            }
+        }
+    "#;
+    
+    let variables = serde_json::json!({
+        "id": id, 
+        "hasSentUpdate": has_sent_update
+    });
+    
+    let body = serde_json::json!({
+        "query": query, 
+        "variables": variables
+    });
+    
     let response = client
         .post(root_api_url)
         .header("Content-Type", "application/json")
-        .body(query)
+        .json(&body)
         .send()
         .await?;
 
-    if response.status().is_success() {
-        println!("Successfully updated streak for ID {}", id);
+    let response_status = response.status();
+    let response_body = response.text().await?;
+
+    if response_status.is_success() {
+        println!("Successfully updated streak for ID {}: {}", id, response_body);
         Ok(())
     } else {
         Err(anyhow::anyhow!(
-            "Failed to update streak for ID {}. HTTP status: {}",
-            id,
-            response.status()
-        )
-        .into())
+            "Failed to update streak for ID {}. HTTP status: {}, response: {}", 
+            id, response_status, response_body
+        ).into())
     }
 }
