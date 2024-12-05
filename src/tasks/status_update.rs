@@ -95,7 +95,7 @@ pub async fn check_status_updates(ctx: Context) {
 
     if naughty_list.is_empty() {
         status_update_channel
-            .say(ctx.http, "Everyone sent their update in the last 1 minutes!")
+            .say(ctx.http, "Everyone sent their update today!")
             .await
             .expect("Failed to send message");
     } else {
