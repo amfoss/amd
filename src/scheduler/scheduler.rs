@@ -19,6 +19,8 @@ use crate::scheduler::tasks::{get_tasks, Task};
 use serenity::client::Context as SerenityContext;
 
 use tokio::spawn;
+use tokio::time::Duration;
+
 
 pub async fn run_scheduler(ctx: SerenityContext) {
     let tasks = get_tasks();
@@ -32,7 +34,6 @@ async fn schedule_task(ctx: SerenityContext, task: Box<dyn Task>) {
     loop {
         let next_run_in = task.run_in();
         tokio::time::sleep(next_run_in).await;
-
         task.run(ctx.clone()).await;
     }
 }

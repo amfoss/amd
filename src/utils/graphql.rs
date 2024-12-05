@@ -16,15 +16,17 @@ You should have received a copy of the GNU General Public License
 along with this program.  If not, see <https://www.gnu.org/licenses/>.
 */
 use serde_json::Value;
+use anyhow::{Result};
 
 const REQUEST_URL: &str = "https://root.shuttleapp.rs/";
 
-pub async fn fetch_members() -> Result<Vec<String>, reqwest::Error> {
+pub async fn fetch_members() -> Result<Vec<(String, i32)>, reqwest::Error> {
     let client = reqwest::Client::new();
     let query = r#"
     query {
         getMember {
             name
+            id
         }
     }"#;
 
@@ -36,12 +38,63 @@ pub async fn fetch_members() -> Result<Vec<String>, reqwest::Error> {
 
     let json: Value = response.json().await?;
 
-    let member_names: Vec<String> = json["data"]["getMember"]
+    let member_names: Vec<(String, i32)> = json["data"]["getMember"]
         .as_array()
-        .unwrap()
+        .unwrap_or(&vec![])
         .iter()
-        .map(|member| member["name"].as_str().unwrap().to_string())
+        .map(|member| {
+            let id = member["id"].as_i64().unwrap_or(0) as i32;
+            let name = member["name"].as_str().unwrap_or("").to_string();
+            (name, id)
+        })
         .collect();
 
     Ok(member_names)
+}
+
+pub async fn send_streak_update(
+    root_api_url: &str, 
+    id: i32, 
+    has_sent_update: bool,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let client = reqwest::Client::new();
+    let query = r#"
+        mutation updateStreak($id: Int!, $hasSentUpdate: Boolean!) {
+            updateStreak(id: $id, hasSentUpdate: $hasSentUpdate) {
+                id
+                streak
+                maxStreak
+            }
+        }
+    "#;
+    
+    let variables = serde_json::json!({
+        "id": id, 
+        "hasSentUpdate": has_sent_update
+    });
+    
+    let body = serde_json::json!({
+        "query": query, 
+        "variables": variables
+    });
+    
+    let response = client
+        .post(root_api_url)
+        .header("Content-Type", "application/json")
+        .json(&body)
+        .send()
+        .await?;
+
+    let response_status = response.status();
+    let response_body = response.text().await?;
+
+    if response_status.is_success() {
+        println!("Successfully updated streak for ID {}: {}", id, response_body);
+        Ok(())
+    } else {
+        Err(anyhow::anyhow!(
+            "Failed to update streak for ID {}. HTTP status: {}, response: {}", 
+            id, response_status, response_body
+        ).into())
+    }
 }
