@@ -15,7 +15,29 @@ GNU General Public License for more details.
 You should have received a copy of the GNU General Public License
 along with this program.  If not, see <https://www.gnu.org/licenses/>.
 */
-pub mod scheduler;
-pub mod tasks;
+use serde::Deserialize;
+use std::borrow::Cow;
 
-pub use self::scheduler::run_scheduler;
+#[derive(Deserialize)]
+pub struct Member<'a> {
+    id: Option<i32>,
+    roll_num: Option<Cow<'a, str>>,
+    name: Option<Cow<'a, str>>,
+    hostel: &'a str,
+    email: &'a str,
+    sex: &'a str,
+    year: i32,
+    mac_addr: &'a str,
+    discord_id: &'a str,
+    group_id: i32,
+}
+
+#[derive(Deserialize)]
+struct Data<'a> {
+    getMember: Vec<Member<'a>>,
+}
+
+#[derive(Deserialize)]
+struct Root<'a> {
+    data: Data<'a>,
+}

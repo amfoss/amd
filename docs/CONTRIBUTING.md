@@ -122,7 +122,7 @@ The event handler takes care of the rest:
 ```rust
         // On the event of a reaction being added
         FullEvent::ReactionAdd { add_reaction } => {
-            let message_id = MessageId::new(ARCHIVE_MESSAGE_ID);
+            let message_id = MessageId::new(ROLES_MESSAGE_ID);
             // Check if the reaction was added to the message we want and if it is reacted with the
             // emoji we want
             if add_reaction.message_id == message_id && data.reaction_roles.contains_key(&add_reaction.emoji) {
