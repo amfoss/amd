@@ -139,38 +139,78 @@ async fn send_and_save_limiting_messages(
 async fn collect_updates(channel_ids: &[ChannelId], ctx: &Context) -> anyhow::Result<Vec<Message>> {
     trace!("Collecting updates");
     let mut valid_updates: Vec<Message> = vec![];
-    let message_ids = get_msg_ids()?;
-    let now = chrono::Local::now().with_timezone(&chrono_tz::Asia::Kolkata);
-    let today_five_am = chrono::Local
-        .with_ymd_and_hms(now.year(), now.month(), now.day(), 5, 0, 0)
-        .earliest()
-        .expect("Failed to create 5 AM timestamp");
-    let yesterday_five_pm = today_five_am - chrono::Duration::hours(12);
-    for (&channel_id, &msg_id) in channel_ids.iter().zip(message_ids.iter()) {
-        let messages = channel_id
-            .messages(
-                &ctx.http,
-                serenity::builder::GetMessages::new()
-                    .after(msg_id)
-                    .limit(100),
-            )
-            .await
-            .with_context(|| anyhow!("Failed to get messages from channel {}", channel_id))?;
+    let message_ids = get_msg_ids();
+    match message_ids {
+        Ok(message_ids) => {
+            let now = chrono::Local::now().with_timezone(&chrono_tz::Asia::Kolkata);
+            let today_five_am = chrono::Local
+                .with_ymd_and_hms(now.year(), now.month(), now.day(), 5, 0, 0)
+                .earliest()
+                .expect("Failed to create 5 AM timestamp");
+            let yesterday_five_pm = today_five_am - chrono::Duration::hours(12);
+            for (&channel_id, &msg_id) in channel_ids.iter().zip(message_ids.iter()) {
+                let messages = channel_id
+                    .messages(
+                        &ctx.http,
+                        serenity::builder::GetMessages::new()
+                        .after(msg_id)
+                        .limit(100),
+                    )
+                    .await
+                    .with_context(|| anyhow!("Failed to get messages from channel {}", channel_id))?;
 
-        debug!("Messages: {:?}", messages);
-        valid_updates.extend(messages.into_iter().filter(|msg| {
-            let content = msg.content.to_lowercase();
-            (content.contains("namah shivaya")
-                && content.contains("regards")
-                && msg.timestamp >= yesterday_five_pm.into())
-                || (content.contains("regards")
-                    && msg.author.name == "amanoslean"
-                    && msg.timestamp >= yesterday_five_pm.into())
-        }));
+                debug!("Messages: {:?}", messages);
+                valid_updates.extend(messages.into_iter().filter(|msg| {
+                    let content = msg.content.to_lowercase();
+                    (content.contains("namah shivaya")
+                     && content.contains("regards")
+                     && msg.timestamp >= yesterday_five_pm.into())
+                        || (content.contains("regards")
+                            && msg.author.name == "amanoslean"
+                            && msg.timestamp >= yesterday_five_pm.into())
+                }));
+            }
+
+            debug!("Valid updates: {:?}", valid_updates);
+            Ok(valid_updates)
+
+        },
+        Err(e) => {
+            debug!("Failed to get message_ids {}. Defaulting to default GetMessages()", e);
+            let now = chrono::Local::now().with_timezone(&chrono_tz::Asia::Kolkata);
+            let today_five_am = chrono::Local
+                .with_ymd_and_hms(now.year(), now.month(), now.day(), 5, 0, 0)
+                .earliest()
+                .expect("Failed to create 5 AM timestamp");
+            let yesterday_five_pm = today_five_am - chrono::Duration::hours(12);
+            for &channel_id in channel_ids {
+                let messages = channel_id
+                    .messages(
+                        &ctx.http,
+                        serenity::builder::GetMessages::new()
+                        .limit(100),
+                    )
+                    .await
+                    .with_context(|| anyhow!("Failed to get messages from channel {}", channel_id))?;
+
+                debug!("Messages: {:?}", messages);
+                valid_updates.extend(messages.into_iter().filter(|msg| {
+                    let content = msg.content.to_lowercase();
+                    (content.contains("namah shivaya")
+                     && content.contains("regards")
+                     && msg.timestamp >= yesterday_five_pm.into())
+                        || (content.contains("regards")
+                            && msg.author.name == "amanoslean"
+                            && msg.timestamp >= yesterday_five_pm.into())
+                }));
+            }
+
+            debug!("Valid updates: {:?}", valid_updates);
+            Ok(valid_updates)
+
+
+        }
     }
-
-    debug!("Valid updates: {:?}", valid_updates);
-    Ok(valid_updates)
 }
 
 fn get_msg_ids() -> anyhow::Result<Vec<MessageId>> {
