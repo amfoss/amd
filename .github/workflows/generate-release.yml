@@ -1,4 +1,4 @@
-name: Release on Tag Push
+name: Generate Release
 
 on:
   push:
@@ -36,8 +36,7 @@ jobs:
 
       - name: Get tag name
         shell: bash
-        run: |
-          echo "RELEASE_TAG=${GITHUB_REF_NAME:-v0.1.0-test}" >> $GITHUB_ENV
+        run: echo "RELEASE_TAG=${GITHUB_REF_NAME:-v0.1.0-test}" >> $GITHUB_ENV
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
@@ -49,22 +48,31 @@ jobs:
         env:
           CARGO_TARGET_DIR: target
 
-      - name: Prepare release assets
+      - name: Determine binary name
         shell: bash
         run: |
-          cd target/${{ matrix.target }}/release
-          BINARY_NAME="amd${{ matrix.extension }}"
-          if [ -f "$BINARY_NAME" ]; then
-            ARCHIVE_NAME="amd-${{ env.RELEASE_TAG }}-${{ matrix.name }}.tar.gz"
-            tar -czf "../../../$ARCHIVE_NAME" "$BINARY_NAME"
-            echo "Created archive: $ARCHIVE_NAME"
-            echo "ASSET_PATH=$ARCHIVE_NAME" >> $GITHUB_ENV
-          else
-            echo "Error: Binary $BINARY_NAME not found"
-            ls -la
-            exit 1
-          fi
-          cd ../../..
+          BIN_NAME=$(cargo metadata --no-deps --format-version 1 | jq -r '.packages[0] | .name')
+          echo "BINARY_NAME=$BIN_NAME${{ matrix.extension }}" >> $GITHUB_ENV
+
+      - name: Strip binary (Linux/macOS only)
+        if: matrix.os != 'windows-latest'
+        run: strip target/${{ matrix.target }}/release/${{ env.BINARY_NAME }}
+
+      - name: Prepare release assets (Linux/macOS)
+        if: matrix.os != 'windows-latest'
+        shell: bash
+        run: |
+          ARCHIVE_NAME="${{ env.RELEASE_TAG }}-${{ matrix.name }}.tar.gz"
+          tar -czf "$ARCHIVE_NAME" -C target/${{ matrix.target }}/release "${{ env.BINARY_NAME }}"
+          echo "ASSET_PATH=$ARCHIVE_NAME" >> $GITHUB_ENV
+
+      - name: Prepare release assets (Windows)
+        if: matrix.os == 'windows-latest'
+        shell: pwsh
+        run: |
+          $ArchiveName = "${{ env.RELEASE_TAG }}-${{ matrix.name }}.zip"
+          Compress-Archive -Path "target/${{ matrix.target }}/release/${{ env.BINARY_NAME }}" -DestinationPath $ArchiveName
+          echo "ASSET_PATH=$ArchiveName" | Out-File -FilePath $env:GITHUB_ENV -Append
 
       - name: Upload Release Asset
         uses: softprops/action-gh-release@v2
