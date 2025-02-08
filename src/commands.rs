@@ -15,6 +15,7 @@ GNU General Public License for more details.
 You should have received a copy of the GNU General Public License
 along with this program.  If not, see <https://www.gnu.org/licenses/>.
 */
+use anyhow::Context as _;
 use tracing::{info, trace};
 use tracing_subscriber::EnvFilter;
 
@@ -33,12 +34,48 @@ async fn set_log_level(ctx: Context<'_>, level: String) -> Result<(), Error> {
     let data = ctx.data();
     let reload_handle = data.log_reload_handle.write().await;
 
+    let enable_debug_libraries_string = std::env::var("ENABLE_DEBUG_LIBRARIES")
+        .context("ENABLE_DEBUG_LIBRARIES was not found in the ENV")?;
+    let enable_debug_libraries: bool = enable_debug_libraries_string
+        .parse()
+        .context("Failed to parse ENABLE_DEBUG_LIBRARIES")?;
+    let crate_name = env!("CARGO_CRATE_NAME");
     let new_filter = match level.to_lowercase().as_str() {
-        "trace" => "trace",
-        "debug" => "debug",
-        "info" => "info",
-        "warn" => "warn",
-        "error" => "error",
+        "trace" => {
+            if enable_debug_libraries {
+                "trace".to_string()
+            } else {
+                format!("{crate_name}=trace")
+            }
+        }
+        "debug" => {
+            if enable_debug_libraries {
+                "debug".to_string()
+            } else {
+                format!("{crate_name}=debug")
+            }
+        }
+        "info" => {
+            if enable_debug_libraries {
+                "info".to_string()
+            } else {
+                format!("{crate_name}=info")
+            }
+        }
+        "warn" => {
+            if enable_debug_libraries {
+                "warn".to_string()
+            } else {
+                format!("{crate_name}=warn")
+            }
+        }
+        "error" => {
+            if enable_debug_libraries {
+                "error".to_string()
+            } else {
+                format!("{crate_name}=error")
+            }
+        }
         _ => {
             ctx.say("Invalid log level! Use: trace, debug, info, warn, error")
                 .await?;
@@ -46,7 +83,7 @@ async fn set_log_level(ctx: Context<'_>, level: String) -> Result<(), Error> {
         }
     };
 
-    if reload_handle.reload(EnvFilter::new(new_filter)).is_ok() {
+    if reload_handle.reload(EnvFilter::new(&new_filter)).is_ok() {
         ctx.say(format!("Log level changed to **{}**", new_filter))
             .await?;
         info!("Log level changed to {}", new_filter);
