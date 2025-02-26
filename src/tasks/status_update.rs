@@ -256,6 +256,11 @@ async fn generate_embed(
             let current_streak = member.streak[0].current_streak;
             let max_streak = member.streak[0].max_streak;
 
+            if current_streak < 1 {
+                member.streak[0].current_streak = 1;
+                debug!("Setting streak to 1 for {}", member.name);
+            }
+
             if current_streak >= highest_streak {
                 debug!("Pushing to highest_streak: {:?}", member);
                 highest_streak = current_streak;
