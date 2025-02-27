@@ -256,22 +256,26 @@ async fn generate_embed(
             let current_streak = member.streak[0].current_streak;
             let max_streak = member.streak[0].max_streak;
 
-            if current_streak >= highest_streak {
-                debug!("Pushing to highest_streak: {:?}", member);
+            if current_streak > highest_streak {
                 highest_streak = current_streak;
+                highest_streak_members.clear();  
                 highest_streak_members.push(member.clone());
-            }
+            } else if current_streak == highest_streak {
+                highest_streak_members.push(member.clone());
+            }            
 
             if current_streak == max_streak {
                 debug!("Pushing to record_breakers: {:?}", member);
                 record_breakers.push(member.clone())
             }
 
-            if max_streak >= all_time_high {
-                debug!("Pushing to all_time_high_members: {:?}", member);
+            if max_streak > all_time_high {
                 all_time_high = max_streak;
-                all_time_high_members.push(member.clone())
-            }
+                all_time_high_members.clear();
+                all_time_high_members.push(member.clone());
+            } else if max_streak == all_time_high {
+                all_time_high_members.push(member.clone());
+            }            
         } else {
             debug!("Pushing to naughty_list: {:?}", member);
             reset_streak(&mut member)
