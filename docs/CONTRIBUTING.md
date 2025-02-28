@@ -19,10 +19,8 @@ Thank you for considering contributing to our Discord bot written in Rust using 
 ### Prerequisites
 Before proceeding, ensure you have the following:
 
-1. Install Rust
-
-
-```
+1. Rust
+```bash
 # Download and install Rust using rustup
 curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh  
 
@@ -32,12 +30,12 @@ source ~/.bashrc
 ````
 For more details, visit the [Official Rust installation page.](https://www.rust-lang.org/tools/install)
 
-2. Obtain a [Discord Bot Token](https://discord.com/developers/).
+2. A [Discord Bot Token](https://discord.com/developers/).
 
 ### Setup
 
 1. Clone the repository:
-```
+```bash
 git clone https://github.com/amfoss/amd.git
 cd amd
 ```
@@ -53,10 +51,8 @@ ENABLE_DEBUG_LIBRARIES=true
 OWNER_ID="owners_id"
 
 AMD_RUST_ENV="trace"  #trace for developers
-
 ```
 3. Run the bot locally with `cargo run`. 
-
 
 ## How To Contribute
 
