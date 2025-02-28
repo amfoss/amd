@@ -140,7 +140,8 @@ fn setup_tracing(env: &str, enable_libraries: bool) -> anyhow::Result<ReloadHand
 #[tokio::main]
 async fn main() -> Result<(), Error> {
     dotenv::dotenv().ok();
-    let is_production = std::env::var("AMD_RUST_ENV").context("RUST_ENV was not found in the ENV")?;
+    let is_production =
+        std::env::var("AMD_RUST_ENV").context("RUST_ENV was not found in the ENV")?;
     let enable_debug_libraries_string = std::env::var("ENABLE_DEBUG_LIBRARIES")
         .context("ENABLE_DEBUG_LIBRARIES was not found in the ENV")?;
     let enable_debug_libraries: bool = enable_debug_libraries_string
