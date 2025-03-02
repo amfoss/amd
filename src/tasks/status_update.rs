@@ -257,7 +257,7 @@ async fn generate_embed(
             let max_streak = member.streak[0].max_streak;
 
             if current_streak < 1 {
-                member.streak[0].current_streak = 1;
+                increment_streak(&mut member)
                 debug!("Setting streak to 1 for {}", member.name);
             }
 
