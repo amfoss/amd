@@ -18,6 +18,16 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 use serde::Deserialize;
 
 #[derive(Clone, Debug, Deserialize)]
+pub struct StreakWithMemberId {
+    #[serde(rename = "memberId")]
+    pub member_id: i32,
+    #[serde(rename = "currentStreak")]
+    pub current_streak: i32,
+    #[serde(rename = "maxStreak")]
+    pub max_streak: i32,
+}
+
+#[derive(Clone, Debug, Deserialize)]
 pub struct Streak {
     #[serde(rename = "currentStreak")]
     pub current_streak: i32,
@@ -32,6 +42,8 @@ pub struct Member {
     pub name: String,
     #[serde(rename = "discordId")]
     pub discord_id: String,
+    #[serde(rename = "groupId")]
+    pub group_id: i32,
     #[serde(default)]
     pub streak: Vec<Streak>, // Note that Root will NOT have multiple Streak elements but it may be an empty list which is why we use a vector here
 }
