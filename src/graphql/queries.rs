@@ -267,7 +267,7 @@ pub async fn fetch_attendance() -> anyhow::Result<Vec<AttendanceRecord>> {
     );
     Ok(attendance)
 }
-  
+
 pub async fn fetch_streaks() -> anyhow::Result<Vec<StreakWithMemberId>> {
     let request_url = std::env::var("ROOT_URL").context("ROOT_URL not found in ENV")?;
 
