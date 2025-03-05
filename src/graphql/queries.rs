@@ -22,6 +22,8 @@ use tracing::debug;
 
 use crate::graphql::models::{AttendanceRecord, Member, Streak};
 
+use super::models::StreakWithMemberId;
+
 pub async fn fetch_members() -> anyhow::Result<Vec<Member>> {
     let request_url = std::env::var("ROOT_URL").context("ROOT_URL not found in ENV")?;
 
@@ -32,6 +34,7 @@ pub async fn fetch_members() -> anyhow::Result<Vec<Member>> {
             memberId
             name
             discordId
+            groupId
             streak {
               currentStreak
               maxStreak
@@ -263,4 +266,48 @@ pub async fn fetch_attendance() -> anyhow::Result<Vec<AttendanceRecord>> {
         attendance.len()
     );
     Ok(attendance)
+}
+  
+pub async fn fetch_streaks() -> anyhow::Result<Vec<StreakWithMemberId>> {
+    let request_url = std::env::var("ROOT_URL").context("ROOT_URL not found in ENV")?;
+
+    let client = reqwest::Client::new();
+    let query = r#"
+        {
+          streaks {
+            memberId
+            currentStreak
+            maxStreak
+          }
+        }
+    "#;
+
+    debug!("Sending query {}", query);
+    let response = client
+        .post(request_url)
+        .json(&serde_json::json!({"query": query}))
+        .send()
+        .await
+        .context("Failed to successfully post request")?;
+
+    if !response.status().is_success() {
+        return Err(anyhow!(
+            "Server responded with an error: {:?}",
+            response.status()
+        ));
+    }
+
+    let response_json: serde_json::Value = response
+        .json()
+        .await
+        .context("Failed to serialize response")?;
+
+    debug!("Response: {}", response_json);
+    let streaks = response_json
+        .get("data")
+        .and_then(|data| data.get("streaks"))
+        .and_then(|streaks| serde_json::from_value::<Vec<StreakWithMemberId>>(streaks.clone()).ok())
+        .context("Failed to parse streaks data")?;
+
+    Ok(streaks)
 }
