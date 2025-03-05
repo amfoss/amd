@@ -66,6 +66,7 @@ impl Task for StatusUpdateCheck {
 
 pub async fn check_status_updates(ctx: Context) -> anyhow::Result<()> {
     trace!("Starting check_status_updates");
+    let excluded_members = get_excluded_members().unwrap_or_default();
     let members = fetch_members()
         .await
         .context("Failed to fetch members from Root.")?;
@@ -79,6 +80,12 @@ pub async fn check_status_updates(ctx: Context) -> anyhow::Result<()> {
     send_and_save_limiting_messages(&channel_ids, &ctx)
         .await
         .context("Failed to send and save limiting messages")?;
+
+    let members: Vec<Member> = members
+        .into_iter()
+        .filter(|m| !excluded_members.contains(&m.discord_id.parse::<u64>().unwrap_or(0)))
+        .collect();
+
     let embed = generate_embed(members, updates)
         .await
         .context("Failed to generate embed")?;
