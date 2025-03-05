@@ -16,9 +16,11 @@ You should have received a copy of the GNU General Public License
 along with this program.  If not, see <https://www.gnu.org/licenses/>.
 */
 use anyhow::{anyhow, Context};
+use chrono::Local;
+use serde_json::Value;
 use tracing::debug;
 
-use crate::graphql::models::{Member, Streak};
+use crate::graphql::models::{AttendanceRecord, Member, Streak};
 
 use super::models::StreakWithMemberId;
 
@@ -212,6 +214,58 @@ pub async fn reset_streak(member: &mut Member) -> anyhow::Result<()> {
     }
 
     Ok(())
+}
+
+pub async fn fetch_attendance() -> anyhow::Result<Vec<AttendanceRecord>> {
+    let request_url =
+        std::env::var("ROOT_URL").context("ROOT_URL environment variable not found")?;
+
+    debug!("Fetching attendance data from {}", request_url);
+
+    let client = reqwest::Client::new();
+    let today = Local::now().format("%Y-%m-%d").to_string();
+    let query = format!(
+        r#"
+        query {{
+            attendanceByDate(date: "{}") {{
+                name,
+                year,
+                isPresent,
+                timeIn,
+            }}
+        }}"#,
+        today
+    );
+
+    let response = client
+        .post(&request_url)
+        .json(&serde_json::json!({ "query": query }))
+        .send()
+        .await
+        .context("Failed to send GraphQL request")?;
+    debug!("Response status: {:?}", response.status());
+
+    let json: Value = response
+        .json()
+        .await
+        .context("Failed to parse response as JSON")?;
+
+    let attendance_array = json["data"]["attendanceByDate"]
+        .as_array()
+        .context("Missing or invalid 'data.attendanceByDate' array in response")?;
+
+    let attendance: Vec<AttendanceRecord> = attendance_array
+        .iter()
+        .map(|entry| {
+            serde_json::from_value(entry.clone()).context("Failed to parse attendance record")
+        })
+        .collect::<anyhow::Result<Vec<_>>>()?;
+
+    debug!(
+        "Successfully fetched {} attendance records",
+        attendance.len()
+    );
+    Ok(attendance)
 }
 
 pub async fn fetch_streaks() -> anyhow::Result<Vec<StreakWithMemberId>> {

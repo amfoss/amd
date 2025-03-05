@@ -47,3 +47,14 @@ pub struct Member {
     #[serde(default)]
     pub streak: Vec<Streak>, // Note that Root will NOT have multiple Streak elements but it may be an empty list which is why we use a vector here
 }
+
+#[derive(Debug, Deserialize, Clone)]
+pub struct AttendanceRecord {
+    #[serde(rename = "memberId")]
+    pub name: String,
+    pub year: i32,
+    #[serde(rename = "isPresent")]
+    pub is_present: bool,
+    #[serde(rename = "timeIn")]
+    pub time_in: Option<String>,
+}
