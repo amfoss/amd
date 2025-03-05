@@ -114,11 +114,20 @@ pub async fn increment_streak(member: &mut Member) -> anyhow::Result<()> {
         .get("data")
         .and_then(|data| data.get("incrementStreak"))
     {
-        let current_streak = data.get("currentStreak").and_then(|v| v.as_i64()).ok_or_else(|| anyhow!("current_streak was parsed as None"))? as i32;
-        let max_streak = data.get("maxStreak").and_then(|v| v.as_i64()).ok_or_else(|| anyhow!("max_streak was parsed as None"))? as i32;
+        let current_streak =
+            data.get("currentStreak")
+                .and_then(|v| v.as_i64())
+                .ok_or_else(|| anyhow!("current_streak was parsed as None"))? as i32;
+        let max_streak =
+            data.get("maxStreak")
+                .and_then(|v| v.as_i64())
+                .ok_or_else(|| anyhow!("max_streak was parsed as None"))? as i32;
 
         if member.streak.is_empty() {
-            member.streak.push(Streak { current_streak, max_streak });
+            member.streak.push(Streak {
+                current_streak,
+                max_streak,
+            });
         } else {
             for streak in &mut member.streak {
                 streak.current_streak = current_streak;
@@ -126,9 +135,11 @@ pub async fn increment_streak(member: &mut Member) -> anyhow::Result<()> {
             }
         }
     } else {
-        return Err(anyhow!("Failed to access data from response: {}", response_json));
+        return Err(anyhow!(
+            "Failed to access data from response: {}",
+            response_json
+        ));
     }
-
 
     Ok(())
 }
