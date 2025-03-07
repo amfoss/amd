@@ -50,7 +50,6 @@ pub struct Member {
 
 #[derive(Debug, Deserialize, Clone)]
 pub struct AttendanceRecord {
-    #[serde(rename = "memberId")]
     pub name: String,
     pub year: i32,
     #[serde(rename = "isPresent")]
