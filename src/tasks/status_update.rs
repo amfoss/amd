@@ -232,7 +232,7 @@ fn format_members(members: &[Member]) -> String {
 
         format!("{}\n", list)
     } else {
-        String::from("More than five members hold this record!")
+        String::from("More than five members hold this record!\n")
     }
 }
 
@@ -242,7 +242,7 @@ fn format_defaulters(naughty_list: &GroupedMember) -> String {
         description.push_str(&format!("## Group {}\n", group));
         for member in missed_members {
             let status = match member.streak[0].current_streak {
-                0 => ":x",
+                0 => ":x:",
                 -1 => ":x::x:",
                 _ => ":headstone:",
             };
