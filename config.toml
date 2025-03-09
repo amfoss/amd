@@ -1,0 +1,24 @@
+[discord]
+roles_message_id = 1298636092886749294
+
+[roles]
+archive = 1208457364274028574
+mobile = 1298553701094395936
+systems = 1298553801191718944
+ai = 1298553753523453952
+research = 1298553855474270219
+devops = 1298553883169132554
+web = 1298553910167994428
+
+[channels]
+group_one = 1225098248293716008
+group_two = 1225098298935738489
+group_three = 1225098353378070710
+group_four = 1225098407216156712
+status_update = 764575524127244318
+
+[status_update]
+title_url = "https://www.youtube.com/watch?v=epnuvyNj0FM"
+image_url = "https://media1.tenor.com/m/zAHCPvoyjNIAAAAd/yay-kitty.gif"
+author_url = "https://github.com/amfoss/amd"
+icon_url = "https://cdn.discordapp.com/avatars/1245352445736128696/da3c6f833b688f5afa875c9df5d86f91.webp?size=160"

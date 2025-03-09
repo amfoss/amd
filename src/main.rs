@@ -25,6 +25,10 @@ mod scheduler;
 mod tasks;
 mod utils;
 
+mod config;
+
+use config::CONFIG;
+
 use anyhow::Context as _;
 use poise::{Context as PoiseContext, Framework, FrameworkOptions, PrefixFrameworkOptions};
 use reaction_roles::{handle_reaction, populate_data_with_reaction_roles};
