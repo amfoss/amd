@@ -230,6 +230,7 @@ pub async fn fetch_attendance() -> anyhow::Result<Vec<AttendanceRecord>> {
             attendanceByDate(date: "{}") {{
                 name,
                 year,
+                groupId,
                 isPresent,
                 timeIn,
             }}
