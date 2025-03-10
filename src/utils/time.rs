@@ -15,8 +15,9 @@ GNU General Public License for more details.
 You should have received a copy of the GNU General Public License
 along with this program.  If not, see <https://www.gnu.org/licenses/>.
 */
-use chrono::{Datelike, Local, TimeZone};
+use chrono::{DateTime, Datelike, Local, TimeZone};
 use chrono_tz::Asia::Kolkata;
+use chrono_tz::Tz;
 use tracing::debug;
 
 use std::time::Duration;
@@ -44,4 +45,16 @@ pub fn time_until(hour: u32, minute: u32) -> Duration {
     let duration = next_run.signed_duration_since(now);
     debug!("duration: {}", duration);
     Duration::from_secs(duration.num_seconds().max(0) as u64)
+}
+
+pub fn get_five_forty_five_pm_timestamp(now: DateTime<Tz>) -> DateTime<Local> {
+    let date =
+        chrono::NaiveDate::from_ymd_opt(now.year(), now.month(), now.day()).expect("Invalid date");
+    let time = chrono::NaiveTime::from_hms_opt(17, 45, 0).expect("Invalid time");
+    let naive_dt = date.and_time(time);
+
+    chrono::Local
+        .from_local_datetime(&naive_dt)
+        .single()
+        .expect("Chrono must work.")
 }

@@ -15,18 +15,19 @@ GNU General Public License for more details.
 You should have received a copy of the GNU General Public License
 along with this program.  If not, see <https://www.gnu.org/licenses/>.
 */
+mod lab_attendance;
 mod status_update;
 
 use anyhow::Result;
 use async_trait::async_trait;
+use lab_attendance::PresenseReport;
 use serenity::client::Context;
 use status_update::StatusUpdateCheck;
 use tokio::time::Duration;
 
 /// A [`Task`] is any job that needs to be executed on a regular basis.
 /// A task has a function [`Task::run_in`] that returns the time till the
-/// next ['Task::run`] is run. It also has a [`Task::name`] that can be used
-/// in the future to display to the end user.
+/// next ['Task::run`] is run.
 #[async_trait]
 pub trait Task: Send + Sync {
     fn name(&self) -> &str;
@@ -37,5 +38,5 @@ pub trait Task: Send + Sync {
 /// Analogous to [`crate::commands::get_commands`], every task that is defined
 /// must be included in the returned vector in order for it to be scheduled.
 pub fn get_tasks() -> Vec<Box<dyn Task>> {
-    vec![Box::new(StatusUpdateCheck)]
+    vec![Box::new(StatusUpdateCheck), Box::new(PresenseReport)]
 }

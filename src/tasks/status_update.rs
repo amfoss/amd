@@ -15,38 +15,24 @@ GNU General Public License for more details.
 You should have received a copy of the GNU General Public License
 along with this program.  If not, see <https://www.gnu.org/licenses/>.
 */
-use anyhow::{anyhow, Context as _};
-use chrono::{Datelike, TimeZone};
-use chrono_tz::Asia;
+use std::collections::{HashMap, HashSet};
+
+use chrono::{DateTime, Utc};
 use serenity::all::{
-    ChannelId, Context, CreateEmbed, CreateEmbedAuthor, CreateMessage, Message, MessageId,
-    Timestamp,
+    CacheHttp, ChannelId, Context, CreateEmbed, CreateMessage, GetMessages, Message,
 };
 use serenity::async_trait;
-use tracing::{debug, trace};
-
-use std::io::Write;
-use std::{collections::HashSet, fs::File};
 
 use super::Task;
-use crate::utils::time::time_until;
-use crate::{
-    graphql::{
-        models::Member,
-        queries::{fetch_members, increment_streak, reset_streak},
-    },
-    ids::{
-        GROUP_FOUR_CHANNEL_ID, GROUP_ONE_CHANNEL_ID, GROUP_THREE_CHANNEL_ID, GROUP_TWO_CHANNEL_ID,
-        STATUS_UPDATE_CHANNEL_ID,
-    },
+use crate::graphql::models::{Member, StreakWithMemberId};
+use crate::graphql::queries::{fetch_members, fetch_streaks, increment_streak, reset_streak};
+use crate::ids::{
+    GROUP_FOUR_CHANNEL_ID, GROUP_ONE_CHANNEL_ID, GROUP_THREE_CHANNEL_ID, GROUP_TWO_CHANNEL_ID,
+    STATUS_UPDATE_CHANNEL_ID,
 };
+use crate::utils::time::time_until;
 
-const TITLE_URL: &str = "https://www.youtube.com/watch?v=epnuvyNj0FM";
-const IMAGE_URL: &str = "https://media1.tenor.com/m/zAHCPvoyjNIAAAAd/yay-kitty.gif";
-const AUTHOR_URL: &str = "https://github.com/amfoss/amd";
-const ICON_URL: &str = "https://cdn.discordapp.com/avatars/1245352445736128696/da3c6f833b688f5afa875c9df5d86f91.webp?size=160";
-
-/// Checks for status updates daily at 9 AM.
+/// Checks for status updates daily at 5 AM.
 pub struct StatusUpdateCheck;
 
 #[async_trait]
@@ -60,179 +46,152 @@ impl Task for StatusUpdateCheck {
     }
 
     async fn run(&self, ctx: Context) -> anyhow::Result<()> {
-        check_status_updates(ctx).await
+        status_update_check(ctx).await
     }
 }
 
-pub async fn check_status_updates(ctx: Context) -> anyhow::Result<()> {
-    trace!("Starting check_status_updates");
-    let members = fetch_members()
-        .await
-        .context("Failed to fetch members from Root.")?;
-    debug!("Members fetched from root: {:?}", members);
-    let channel_ids = get_channel_ids().context("Failed to get channel IDs")?;
-    debug!("channel_ids: {:?}", channel_ids);
-    let updates: Vec<Message> = collect_updates(&channel_ids, &ctx)
-        .await
-        .context("Failed to collect updates")?;
-    debug!("Updates collected: {:?}", updates);
-    send_and_save_limiting_messages(&channel_ids, &ctx)
-        .await
-        .context("Failed to send and save limiting messages")?;
-    let embed = generate_embed(members, updates)
-        .await
-        .context("Failed to generate embed")?;
+type GroupedMember = HashMap<u64, Vec<Member>>;
+
+struct ReportConfig {
+    time_valid_from: DateTime<chrono_tz::Tz>,
+    keywords: Vec<&'static str>,
+    special_authors: Vec<&'static str>,
+}
+
+const AMAN_SHAFEEQ: &str = "767636699077410837";
+const CHANDRA_MOULI: &str = "1265880467047976970";
+
+async fn status_update_check(ctx: Context) -> anyhow::Result<()> {
+    let updates = get_updates(&ctx).await?;
+    let members = fetch_members().await?;
+
+    // naughty_list -> members who did not send updates
+    let (mut naughty_list, mut nice_list) = categorize_members(&members, updates);
+    update_streaks_for_members(&mut naughty_list, &mut nice_list).await?;
+
+    let embed = generate_embed(members, naughty_list).await?;
     let msg = CreateMessage::new().embed(embed);
+
     let status_update_channel = ChannelId::new(STATUS_UPDATE_CHANNEL_ID);
-    debug!("Sending report...");
-    status_update_channel
-        .send_message(ctx.http, msg)
-        .await
-        .context("Failed to send status update report")?;
+    status_update_channel.send_message(ctx.http(), msg).await?;
 
     Ok(())
 }
 
-// TOOD: Get IDs through ENV instead
-fn get_channel_ids() -> anyhow::Result<Vec<ChannelId>> {
-    trace!("Getting channel ids...");
-    Ok(vec![
+async fn get_updates(ctx: &Context) -> anyhow::Result<Vec<Message>> {
+    let channel_ids = get_channel_ids();
+    let mut updates = Vec::new();
+
+    let get_messages_builder = GetMessages::new().limit(100);
+    for channel in channel_ids {
+        let messages = channel.messages(ctx.http(), get_messages_builder).await?;
+        let valid_updates = messages.into_iter().filter(is_valid_status_update);
+        updates.extend(valid_updates);
+    }
+
+    Ok(updates)
+}
+
+// TODO: Replace hardcoded set with configurable list
+fn get_channel_ids() -> Vec<ChannelId> {
+    vec![
         ChannelId::new(GROUP_ONE_CHANNEL_ID),
         ChannelId::new(GROUP_TWO_CHANNEL_ID),
         ChannelId::new(GROUP_THREE_CHANNEL_ID),
         ChannelId::new(GROUP_FOUR_CHANNEL_ID),
-    ])
+    ]
 }
 
-async fn send_and_save_limiting_messages(
-    channel_ids: &Vec<ChannelId>,
-    ctx: &Context,
-) -> anyhow::Result<()> {
-    trace!("Running send_and_save_limiting_messages()");
-    let mut msg_ids: Vec<MessageId> = vec![];
-    for channel_id in channel_ids {
-        debug!("Sending message in {}", channel_id);
-        let msg = channel_id
-            .say(
-                &ctx.http,
-                "Collecting messages for status update report. Please do not delete this message.",
-            )
-            .await
-            .with_context(|| {
-                anyhow::anyhow!("Failed to send limiting message in channel {}", channel_id)
-            })?;
+fn is_valid_status_update(msg: &Message) -> bool {
+    let report_config = get_report_config();
+    let content = msg.content.to_lowercase();
 
-        debug!("Message ID: {}", msg.id);
-        msg_ids.push(msg.id);
+    let is_within_timeframe = DateTime::<Utc>::from_timestamp(msg.timestamp.timestamp(), 0)
+        .expect("Valid timestamp")
+        .with_timezone(&chrono_tz::Asia::Kolkata)
+        >= report_config.time_valid_from;
+
+    let has_required_keywords = report_config
+        .keywords
+        .iter()
+        .all(|keyword| content.contains(keyword));
+    let is_special_author = report_config
+        .special_authors
+        .contains(&msg.author.id.to_string().as_str());
+    let is_valid_content =
+        has_required_keywords || (is_special_author && content.contains("regards"));
+
+    is_within_timeframe && is_valid_content
+}
+
+// TODO: Parts of this could also be removed from code like channel_ids
+fn get_report_config() -> ReportConfig {
+    let now = chrono::Utc::now().with_timezone(&chrono_tz::Asia::Kolkata);
+    let yesterday = now.date_naive() - chrono::Duration::days(1);
+    let time_valid_from = yesterday
+        .and_hms_opt(20, 0, 0)
+        .expect("Valid timestamp")
+        .and_local_timezone(chrono_tz::Asia::Kolkata)
+        .earliest()
+        .expect("Valid timezone conversion");
+
+    ReportConfig {
+        time_valid_from,
+        keywords: vec!["namah shivaya", "regards"],
+        special_authors: vec![AMAN_SHAFEEQ, CHANDRA_MOULI],
     }
-    let file_name =
-        std::env::var("CONFIG_FILE_NAME").context("Config. file name was not found in the ENV")?;
-    let mut file = File::create(file_name).context("Failed to create Config. file handler")?;
+}
 
-    for msg_id in msg_ids {
-        writeln!(file, "{}", msg_id).context("Failed to write to Config. file")?;
+fn categorize_members(
+    members: &Vec<Member>,
+    updates: Vec<Message>,
+) -> (GroupedMember, Vec<Member>) {
+    let mut nice_list = vec![];
+    let mut naughty_list = HashMap::new();
+
+    let mut sent_updates: HashSet<String> = HashSet::new();
+
+    for message in updates.iter() {
+        sent_updates.insert(message.author.id.to_string());
+    }
+
+    for member in members {
+        if sent_updates.contains(&member.discord_id) {
+            nice_list.push(member.clone());
+        } else {
+            let group = member.group_id as u64;
+            naughty_list
+                .entry(group)
+                .or_insert_with(Vec::new)
+                .push(member.clone());
+        }
+    }
+
+    (naughty_list, nice_list)
+}
+
+async fn update_streaks_for_members(
+    naughty_list: &mut GroupedMember,
+    nice_list: &mut Vec<Member>,
+) -> anyhow::Result<()> {
+    for member in nice_list {
+        increment_streak(member).await?;
+    }
+
+    for members in naughty_list.values_mut() {
+        for member in members {
+            reset_streak(member).await?;
+        }
     }
 
     Ok(())
 }
 
-async fn collect_updates(channel_ids: &[ChannelId], ctx: &Context) -> anyhow::Result<Vec<Message>> {
-    trace!("Collecting updates");
-    let mut valid_updates: Vec<Message> = vec![];
-    let message_ids = get_msg_ids();
-    match message_ids {
-        Ok(message_ids) => {
-            let now = chrono::Local::now().with_timezone(&chrono_tz::Asia::Kolkata);
-            let today_five_am = chrono::Local
-                .with_ymd_and_hms(now.year(), now.month(), now.day(), 5, 0, 0)
-                .earliest()
-                .expect("Failed to create 5 AM timestamp");
-            let yesterday_five_pm = today_five_am - chrono::Duration::hours(12);
-            for (&channel_id, &msg_id) in channel_ids.iter().zip(message_ids.iter()) {
-                let messages = channel_id
-                    .messages(
-                        &ctx.http,
-                        serenity::builder::GetMessages::new()
-                            .after(msg_id)
-                            .limit(100),
-                    )
-                    .await
-                    .with_context(|| {
-                        anyhow!("Failed to get messages from channel {}", channel_id)
-                    })?;
-
-                debug!("Messages: {:?}", messages);
-                valid_updates.extend(messages.into_iter().filter(|msg| {
-                    let content = msg.content.to_lowercase();
-                    (content.contains("namah shivaya")
-                        && content.contains("regards")
-                        && msg.timestamp >= yesterday_five_pm.into())
-                        || (content.contains("regards")
-                            && msg.author.name == "amanoslean"
-                            && msg.timestamp >= yesterday_five_pm.into())
-                }));
-            }
-
-            debug!("Valid updates: {:?}", valid_updates);
-            Ok(valid_updates)
-        }
-        Err(e) => {
-            debug!(
-                "Failed to get message_ids {}. Defaulting to default GetMessages()",
-                e
-            );
-            let now = chrono::Local::now().with_timezone(&chrono_tz::Asia::Kolkata);
-            let today_five_am = chrono::Local
-                .with_ymd_and_hms(now.year(), now.month(), now.day(), 5, 0, 0)
-                .earliest()
-                .expect("Failed to create 5 AM timestamp");
-            let yesterday_five_pm = today_five_am - chrono::Duration::hours(12);
-            for &channel_id in channel_ids {
-                let messages = channel_id
-                    .messages(&ctx.http, serenity::builder::GetMessages::new().limit(100))
-                    .await
-                    .with_context(|| {
-                        anyhow!("Failed to get messages from channel {}", channel_id)
-                    })?;
-
-                debug!("Messages: {:?}", messages);
-                valid_updates.extend(messages.into_iter().filter(|msg| {
-                    let content = msg.content.to_lowercase();
-                    (content.contains("namah shivaya")
-                        && content.contains("regards")
-                        && msg.timestamp >= yesterday_five_pm.into())
-                        || (content.contains("regards")
-                            && msg.author.name == "amanoslean"
-                            && msg.timestamp >= yesterday_five_pm.into())
-                }));
-            }
-
-            debug!("Valid updates: {:?}", valid_updates);
-            Ok(valid_updates)
-        }
-    }
-}
-
-fn get_msg_ids() -> anyhow::Result<Vec<MessageId>> {
-    let file_name =
-        std::env::var("CONFIG_FILE_NAME").context("Configuration file name must be present")?;
-    let content =
-        std::fs::read_to_string(file_name).context("Failed to read config. file for msg ids")?;
-
-    let msg_ids = content
-        .lines()
-        .filter_map(|line| line.parse::<u64>().ok())
-        .map(|e| MessageId::new(e))
-        .collect();
-
-    debug!("msg_ids: {:?}", msg_ids);
-    Ok(msg_ids)
-}
-
 async fn generate_embed(
     members: Vec<Member>,
-    messages: Vec<Message>,
+    naughty_list: GroupedMember,
 ) -> anyhow::Result<CreateEmbed> {
+
     trace!("Running generate_embed");
     let mut naughty_list: Vec<Member> = Vec::new();
     let mut highest_streak = 0;
@@ -267,117 +226,116 @@ async fn generate_embed(
                 highest_streak_members.push(member.clone());
             }
 
-            if current_streak == max_streak {
-                debug!("Pushing to record_breakers: {:?}", member);
-                record_breakers.push(member.clone())
-            }
+    let (all_time_high, all_time_high_members, current_highest, current_highest_members) =
+        get_leaderboard_stats(members).await?;
+    let mut description = String::new();
 
-            if max_streak >= all_time_high {
-                debug!("Pushing to all_time_high_members: {:?}", member);
-                all_time_high = max_streak;
-                all_time_high_members.push(member.clone())
-            }
-        } else {
-            debug!("Pushing to naughty_list: {:?}", member);
-            reset_streak(&mut member)
-                .await
-                .context("Failed to reset streak")?;
-            naughty_list.push(member.clone());
-        }
+
+    description.push_str("# Leaderboard Updates\n");
+
+    description.push_str(&format!(
+        "## All-Time High Streak: {} days\n",
+        all_time_high
+    ));
+    description.push_str(&format_members(&all_time_high_members));
+
+    description.push_str(&format!(
+        "## Current Highest Streak: {} days\n",
+        current_highest
+    ));
+    description.push_str(&format_members(&current_highest_members));
+
+    if !naughty_list.is_empty() {
+        description.push_str("# Defaulters\n");
+        description.push_str(&format_defaulters(&naughty_list));
     }
 
-    let description = build_description(
-        highest_streak,
-        all_time_high,
-        &highest_streak_members,
-        &all_time_high_members,
-        &record_breakers,
-        &naughty_list,
-    );
-    let today = chrono::Local::now()
-        .with_timezone(&Asia::Kolkata)
-        .date_naive();
-
-    let mut embed = CreateEmbed::default()
-        .title(format!("Status Update Report - {}", today))
-        .url(TITLE_URL)
+    let embed = CreateEmbed::new()
+        .title("Status Update Report")
         .description(description)
-        .color(serenity::all::Colour::new(0xeab308))
-        .timestamp(Timestamp::now())
-        .author(
-            CreateEmbedAuthor::new("amD")
-                .url(AUTHOR_URL)
-                .icon_url(ICON_URL),
-        );
-
-    if naughty_list.is_empty() {
-        embed = embed.image(IMAGE_URL);
-    }
+        .color(serenity::all::Colour::new(0xeab308));
 
     Ok(embed)
 }
 
-fn build_description(
-    highest_streak: i32,
-    all_time_high: i32,
-    highest_streak_members: &[Member],
-    all_time_high_members: &[Member],
-    record_breakers: &[Member],
-    naughty_list: &[Member],
-) -> String {
-    trace!("Running build_description");
-    let mut desc = String::from("# Leaderboard Updates\n");
+fn format_members(members: &[Member]) -> String {
+    if members.len() <= 5 {
+        let list = members
+            .iter()
+            .map(|member| format!("- {}", member.name))
+            .collect::<Vec<_>>()
+            .join("\n");
 
-    desc.push_str(&format_section(
-        "All Time High",
-        all_time_high,
-        all_time_high_members,
-    ));
-    desc.push_str(&format_section(
-        "Current Highest Streak",
-        highest_streak,
-        highest_streak_members,
-    ));
-
-    if !record_breakers.is_empty() {
-        desc.push_str("## New Personal Records\n");
-        for member in record_breakers {
-            desc.push_str(&format!(
-                "- {} - {}\n",
-                member.name, member.streak[0].current_streak
-            ));
-        }
-    }
-
-    if naughty_list.is_empty() {
-        desc.push_str("# Missed Updates\nEveryone sent their update yesterday!\n");
+        format!("{}\n", list)
     } else {
-        desc.push_str("# Missed Updates\n");
-        for member in naughty_list {
+        String::from("More than five members hold this record!\n")
+    }
+}
+
+fn format_defaulters(naughty_list: &GroupedMember) -> String {
+    let mut description = String::new();
+    for (group, missed_members) in naughty_list {
+        description.push_str(&format!("## Group {}\n", group));
+        for member in missed_members {
             let status = match member.streak[0].current_streak {
                 0 => ":x:",
                 -1 => ":x::x:",
                 _ => ":headstone:",
             };
-            desc.push_str(&format!("- {} | {}\n", member.name, status));
+            description.push_str(&format!("- {} | {}\n", member.name, status));
         }
     }
-
-    debug!("Description: {}", desc);
-    desc
+    description.push('\n');
+    description
 }
 
-fn format_section(title: &str, value: i32, members: &[Member]) -> String {
-    if members.len() > 5 {
-        format!(
-            "## {} - {}\nMore than five members hold the record!\n",
-            title, value
-        )
-    } else {
-        let mut section = format!("## {} - {}\n", title, value);
-        for member in members {
-            section.push_str(&format!("- {}\n", member.name));
+async fn get_leaderboard_stats(
+    members: Vec<Member>,
+) -> anyhow::Result<(i32, Vec<Member>, i32, Vec<Member>)> {
+    let streaks = fetch_streaks().await?;
+    let member_map: HashMap<i32, &Member> = members.iter().map(|m| (m.member_id, m)).collect();
+
+    let (all_time_high, all_time_high_members) = find_highest_streak(&streaks, &member_map, true);
+    let (current_highest, current_highest_members) =
+        find_highest_streak(&streaks, &member_map, false);
+
+    Ok((
+        all_time_high,
+        all_time_high_members,
+        current_highest,
+        current_highest_members,
+    ))
+}
+
+fn find_highest_streak(
+    streaks: &[StreakWithMemberId],
+    member_map: &HashMap<i32, &Member>,
+    is_all_time: bool,
+) -> (i32, Vec<Member>) {
+    let mut highest = 0;
+    let mut highest_members = Vec::new();
+
+    for streak in streaks {
+        if let Some(member) = member_map.get(&streak.member_id) {
+            let streak_value = if is_all_time {
+                streak.max_streak
+            } else {
+                streak.current_streak
+            };
+
+            match streak_value.cmp(&highest) {
+                std::cmp::Ordering::Greater => {
+                    highest = streak_value;
+                    highest_members.clear();
+                    highest_members.push((*member).clone());
+                }
+                std::cmp::Ordering::Equal => {
+                    highest_members.push((*member).clone());
+                }
+                _ => {}
+            }
         }
-        section
     }
+
+    (highest, highest_members)
 }

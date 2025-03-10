@@ -1,0 +1,38 @@
+name: Lint
+
+on:
+  pull_request:
+    branches: [ "main", "develop" ]
+
+jobs:
+  clippy:
+    name: Clippy
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Cache dependencies
+        uses: Swatinem/rust-cache@v2
+
+      - name: Install Clippy
+        run: rustup component add clippy
+
+      - name: Run clippy
+        run: cargo clippy --all-features -- -D warnings
+
+  rustfmt:
+    name: Format
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Cache dependencies
+        uses: Swatinem/rust-cache@v2
+
+      - name: Install Rustfmt
+        run: rustup component add rustfmt
+
+      - name: Check formatting with rustfmt
+        run: cargo fmt -- --check

@@ -16,9 +16,13 @@ You should have received a copy of the GNU General Public License
 along with this program.  If not, see <https://www.gnu.org/licenses/>.
 */
 use anyhow::{anyhow, Context};
+use chrono::Local;
+use serde_json::Value;
 use tracing::debug;
 
-use crate::graphql::models::{Member, Streak};
+use crate::graphql::models::{AttendanceRecord, Member, Streak};
+
+use super::models::StreakWithMemberId;
 
 pub async fn fetch_members() -> anyhow::Result<Vec<Member>> {
     let request_url = std::env::var("ROOT_URL").context("ROOT_URL not found in ENV")?;
@@ -30,6 +34,7 @@ pub async fn fetch_members() -> anyhow::Result<Vec<Member>> {
             memberId
             name
             discordId
+            groupId
             streak {
               currentStreak
               maxStreak
@@ -84,6 +89,7 @@ pub async fn increment_streak(member: &mut Member) -> anyhow::Result<()> {
         mutation {{
             incrementStreak(input: {{ memberId: {} }}) {{
                 currentStreak
+                maxStreak
             }}
         }}"#,
         member.member_id
@@ -103,23 +109,41 @@ pub async fn increment_streak(member: &mut Member) -> anyhow::Result<()> {
             response.status()
         ));
     }
-    debug!("Response: {:?}", response.text().await);
+    let response_json: serde_json::Value = response
+        .json()
+        .await
+        .context("Failed to parse response JSON")?;
+    debug!("Response: {}", response_json);
 
-    // Handle the streak vector
-    if member.streak.is_empty() {
-        // If the streak vector is empty, add a new Streak object with both values set to 1
-        member.streak.push(Streak {
-            current_streak: 1,
-            max_streak: 1,
-        });
-    } else {
-        // Otherwise, increment the current_streak for each Streak and update max_streak if necessary
-        for streak in &mut member.streak {
-            streak.current_streak += 1;
-            if streak.current_streak > streak.max_streak {
-                streak.max_streak = streak.current_streak;
+    if let Some(data) = response_json
+        .get("data")
+        .and_then(|data| data.get("incrementStreak"))
+    {
+        let current_streak =
+            data.get("currentStreak")
+                .and_then(|v| v.as_i64())
+                .ok_or_else(|| anyhow!("current_streak was parsed as None"))? as i32;
+        let max_streak =
+            data.get("maxStreak")
+                .and_then(|v| v.as_i64())
+                .ok_or_else(|| anyhow!("max_streak was parsed as None"))? as i32;
+
+        if member.streak.is_empty() {
+            member.streak.push(Streak {
+                current_streak,
+                max_streak,
+            });
+        } else {
+            for streak in &mut member.streak {
+                streak.current_streak = current_streak;
+                streak.max_streak = max_streak;
             }
         }
+    } else {
+        return Err(anyhow!(
+            "Failed to access data from response: {}",
+            response_json
+        ));
     }
 
     Ok(())
@@ -174,15 +198,12 @@ pub async fn reset_streak(member: &mut Member) -> anyhow::Result<()> {
                 .and_then(|v| v.as_i64())
                 .ok_or_else(|| anyhow!("max_streak was parsed as None"))? as i32;
 
-        // Update the member's streak vector
         if member.streak.is_empty() {
-            // If the streak vector is empty, initialize it with the returned values
             member.streak.push(Streak {
                 current_streak,
                 max_streak,
             });
         } else {
-            // Otherwise, update the first streak entry
             for streak in &mut member.streak {
                 streak.current_streak = current_streak;
                 streak.max_streak = max_streak;
@@ -193,4 +214,100 @@ pub async fn reset_streak(member: &mut Member) -> anyhow::Result<()> {
     }
 
     Ok(())
+}
+
+pub async fn fetch_attendance() -> anyhow::Result<Vec<AttendanceRecord>> {
+    let request_url =
+        std::env::var("ROOT_URL").context("ROOT_URL environment variable not found")?;
+
+    debug!("Fetching attendance data from {}", request_url);
+
+    let client = reqwest::Client::new();
+    let today = Local::now().format("%Y-%m-%d").to_string();
+    let query = format!(
+        r#"
+        query {{
+            attendanceByDate(date: "{}") {{
+                name,
+                year,
+                isPresent,
+                timeIn,
+            }}
+        }}"#,
+        today
+    );
+
+    let response = client
+        .post(&request_url)
+        .json(&serde_json::json!({ "query": query }))
+        .send()
+        .await
+        .context("Failed to send GraphQL request")?;
+    debug!("Response status: {:?}", response.status());
+
+    let json: Value = response
+        .json()
+        .await
+        .context("Failed to parse response as JSON")?;
+
+    let attendance_array = json["data"]["attendanceByDate"]
+        .as_array()
+        .context("Missing or invalid 'data.attendanceByDate' array in response")?;
+
+    let attendance: Vec<AttendanceRecord> = attendance_array
+        .iter()
+        .map(|entry| {
+            serde_json::from_value(entry.clone()).context("Failed to parse attendance record")
+        })
+        .collect::<anyhow::Result<Vec<_>>>()?;
+
+    debug!(
+        "Successfully fetched {} attendance records",
+        attendance.len()
+    );
+    Ok(attendance)
+}
+
+pub async fn fetch_streaks() -> anyhow::Result<Vec<StreakWithMemberId>> {
+    let request_url = std::env::var("ROOT_URL").context("ROOT_URL not found in ENV")?;
+
+    let client = reqwest::Client::new();
+    let query = r#"
+        {
+          streaks {
+            memberId
+            currentStreak
+            maxStreak
+          }
+        }
+    "#;
+
+    debug!("Sending query {}", query);
+    let response = client
+        .post(request_url)
+        .json(&serde_json::json!({"query": query}))
+        .send()
+        .await
+        .context("Failed to successfully post request")?;
+
+    if !response.status().is_success() {
+        return Err(anyhow!(
+            "Server responded with an error: {:?}",
+            response.status()
+        ));
+    }
+
+    let response_json: serde_json::Value = response
+        .json()
+        .await
+        .context("Failed to serialize response")?;
+
+    debug!("Response: {}", response_json);
+    let streaks = response_json
+        .get("data")
+        .and_then(|data| data.get("streaks"))
+        .and_then(|streaks| serde_json::from_value::<Vec<StreakWithMemberId>>(streaks.clone()).ok())
+        .context("Failed to parse streaks data")?;
+
+    Ok(streaks)
 }

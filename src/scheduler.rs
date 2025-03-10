@@ -21,7 +21,6 @@ use serenity::client::Context as SerenityContext;
 use tokio::spawn;
 use tracing::{debug, error, trace};
 
-/// Spawns a sleepy thread for each [`Task`].
 pub async fn run_scheduler(ctx: SerenityContext) {
     trace!("Running scheduler");
     let tasks = get_tasks();
@@ -32,7 +31,6 @@ pub async fn run_scheduler(ctx: SerenityContext) {
     }
 }
 
-/// Runs the function [`Task::run`] and goes back to sleep until it's time to run again.
 async fn schedule_task(ctx: SerenityContext, task: Box<dyn Task>) {
     loop {
         let next_run_in = task.run_in();
