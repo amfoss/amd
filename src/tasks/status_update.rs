@@ -258,11 +258,11 @@ async fn generate_embed(
 
             if current_streak > highest_streak {
                 highest_streak = current_streak;
-                highest_streak_members.clear();  
+                highest_streak_members.clear();
                 highest_streak_members.push(member.clone());
             } else if current_streak == highest_streak {
                 highest_streak_members.push(member.clone());
-            }            
+            }
 
             if current_streak == max_streak {
                 debug!("Pushing to record_breakers: {:?}", member);
@@ -275,7 +275,7 @@ async fn generate_embed(
                 all_time_high_members.push(member.clone());
             } else if max_streak == all_time_high {
                 all_time_high_members.push(member.clone());
-            }            
+            }
         } else {
             debug!("Pushing to naughty_list: {:?}", member);
             reset_streak(&mut member)
