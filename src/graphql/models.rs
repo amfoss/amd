@@ -52,6 +52,8 @@ pub struct Member {
 pub struct AttendanceRecord {
     pub name: String,
     pub year: i32,
+    #[serde(rename = "groupId")]
+    pub group_id: i32,
     #[serde(rename = "isPresent")]
     pub is_present: bool,
     #[serde(rename = "timeIn")]
