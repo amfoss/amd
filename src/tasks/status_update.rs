@@ -191,9 +191,45 @@ async fn generate_embed(
     members: Vec<Member>,
     naughty_list: GroupedMember,
 ) -> anyhow::Result<CreateEmbed> {
+
+    trace!("Running generate_embed");
+    let mut naughty_list: Vec<Member> = Vec::new();
+    let mut highest_streak = 0;
+    let mut all_time_high = 0;
+    let mut all_time_high_members: Vec<Member> = Vec::new();
+    let mut highest_streak_members: Vec<Member> = Vec::new();
+    let mut record_breakers: Vec<Member> = vec![];
+
+    let message_authors: HashSet<String> =
+        messages.iter().map(|m| m.author.id.to_string()).collect();
+    debug!("Message authors: {:?}", message_authors);
+
+    for mut member in members.into_iter().filter(|m| m.name != "Pakhi Banchalia") {
+        debug!("Processing member: {:?}", member);
+        let has_sent_update = message_authors.contains(&member.discord_id);
+
+        if has_sent_update {
+            increment_streak(&mut member)
+                .await
+                .context("Failed to increment streak")?;
+            let current_streak = member.streak[0].current_streak;
+            let max_streak = member.streak[0].max_streak;
+
+            if current_streak < 1 {
+                increment_streak(&mut member)
+                debug!("Setting streak to 1 for {}", member.name);
+            }
+
+            if current_streak >= highest_streak {
+                debug!("Pushing to highest_streak: {:?}", member);
+                highest_streak = current_streak;
+                highest_streak_members.push(member.clone());
+            }
+
     let (all_time_high, all_time_high_members, current_highest, current_highest_members) =
         get_leaderboard_stats(members).await?;
     let mut description = String::new();
+
 
     description.push_str("# Leaderboard Updates\n");
 
