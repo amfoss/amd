@@ -102,7 +102,19 @@ fn setup_tracing() -> anyhow::Result<ReloadHandle> {
 #[tokio::main]
 async fn main() -> Result<(), Error> {
     dotenv::dotenv().ok();
+
+    let is_production =
+        std::env::var("AMD_RUST_ENV").context("RUST_ENV was not found in the ENV")?;
+    let enable_debug_libraries_string = std::env::var("ENABLE_DEBUG_LIBRARIES")
+        .context("ENABLE_DEBUG_LIBRARIES was not found in the ENV")?;
+    let enable_debug_libraries: bool = enable_debug_libraries_string
+        .parse()
+        .context("Failed to parse ENABLE_DEBUG_LIBRARIES")?;
+    let reload_handle =
+        setup_tracing(&is_production, enable_debug_libraries).context("Failed to setup tracing")?;
+
     let reload_handle = setup_tracing().context("Failed to setup tracing")?;
+
 
     info!("Tracing initialized. Continuing main...");
     let mut data = Data {
