@@ -20,7 +20,6 @@ mod status_update;
 
 use anyhow::Result;
 use async_trait::async_trait;
-use lab_attendance::PresenseReport;
 use serenity::client::Context;
 use status_update::StatusUpdateCheck;
 use tokio::time::Duration;
@@ -38,5 +37,5 @@ pub trait Task: Send + Sync {
 /// Analogous to [`crate::commands::get_commands`], every task that is defined
 /// must be included in the returned vector in order for it to be scheduled.
 pub fn get_tasks() -> Vec<Box<dyn Task>> {
-    vec![Box::new(PresenseReport)]
+    vec![Box::new(StatusUpdateCheck)]
 }
