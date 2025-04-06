@@ -137,7 +137,7 @@ fn get_report_config() -> ReportConfig {
 
     ReportConfig {
         time_valid_from,
-        keywords: vec!["namah shivaya", "regards"],
+        keywords: vec!["namah shivaya", "namashivaya", "regards"],
         special_authors: vec![AMAN_SHAFEEQ, CHANDRA_MOULI],
     }
 }
