@@ -26,13 +26,15 @@ use serenity::async_trait;
 use super::Task;
 use crate::graphql::models::{Member, StreakWithMemberId};
 use crate::graphql::queries::{fetch_members, fetch_streaks, increment_streak, reset_streak};
-use crate::ids::{
-    GROUP_FOUR_CHANNEL_ID, GROUP_ONE_CHANNEL_ID, GROUP_THREE_CHANNEL_ID, GROUP_TWO_CHANNEL_ID,
-    STATUS_UPDATE_CHANNEL_ID,
-};
 use crate::utils::time::time_until;
 
 /// Checks for status updates daily at 5 AM.
+const TITLE_URL: &str = &CONFIG.status_update.title_url;
+const IMAGE_URL: &str = &CONFIG.status_update.image_url;
+const AUTHOR_URL: &str = &CONFIG.status_update.author_url;
+const ICON_URL: &str = &CONFIG.status_update.icon_url;
+
+/// Checks for status updates daily at 9 AM.
 pub struct StatusUpdateCheck;
 
 #[async_trait]
@@ -92,14 +94,14 @@ async fn get_updates(ctx: &Context) -> anyhow::Result<Vec<Message>> {
     Ok(updates)
 }
 
-// TODO: Replace hardcoded set with configurable list
-fn get_channel_ids() -> Vec<ChannelId> {
-    vec![
-        ChannelId::new(GROUP_ONE_CHANNEL_ID),
-        ChannelId::new(GROUP_TWO_CHANNEL_ID),
-        ChannelId::new(GROUP_THREE_CHANNEL_ID),
-        ChannelId::new(GROUP_FOUR_CHANNEL_ID),
-    ]
+// TOOD: Get IDs through ENV instead
+fn get_channel_ids() -> anyhow::Result<Vec<ChannelId>> {
+    Ok(vec![
+        ChannelId::new(CONFIG.channels.group_one),
+        ChannelId::new(CONFIG.channels.group_two),
+        ChannelId::new(CONFIG.channels.group_three),
+        ChannelId::new(CONFIG.channels.group_four),
+    ])
 }
 
 fn is_valid_status_update(msg: &Message) -> bool {
@@ -214,10 +216,33 @@ async fn generate_embed(
         description.push_str(&format_defaulters(&naughty_list));
     }
 
-    let embed = CreateEmbed::new()
-        .title("Status Update Report")
+    let description = build_description(
+        highest_streak,
+        all_time_high,
+        &highest_streak_members,
+        &all_time_high_members,
+        &record_breakers,
+        &naughty_list,
+    );
+    let today = chrono::Local::now()
+        .with_timezone(&Asia::Kolkata)
+        .date_naive();
+
+    let mut embed = CreateEmbed::default()
+        .title(format!("Status Update Report - {}", today))
+        .url(TITLE_URL)
         .description(description)
-        .color(serenity::all::Colour::new(0xeab308));
+        .color(serenity::all::Colour::new(0xeab308))
+        .timestamp(Timestamp::now())
+        .author(
+            CreateEmbedAuthor::new("amD")
+                .url(AUTHOR_URL)
+                .icon_url(ICON_URL),
+        );
+
+    if naughty_list.is_empty() {
+        embed = embed.image(IMAGE_URL);
+    }
 
     Ok(embed)
 }
