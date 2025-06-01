@@ -27,8 +27,7 @@ use super::Task;
 use crate::graphql::models::{Member, StreakWithMemberId};
 use crate::graphql::queries::{fetch_members, fetch_streaks, increment_streak, reset_streak};
 use crate::ids::{
-    GROUP_FOUR_CHANNEL_ID, GROUP_ONE_CHANNEL_ID, GROUP_THREE_CHANNEL_ID, GROUP_TWO_CHANNEL_ID,
-    STATUS_UPDATE_CHANNEL_ID,
+    AI_CHANNEL_ID, MOBILE_CHANNEL_ID, STATUS_UPDATE_CHANNEL_ID, SYSTEMS_CHANNEL_ID, WEB_CHANNEL_ID,
 };
 use crate::utils::time::time_until;
 
@@ -95,10 +94,10 @@ async fn get_updates(ctx: &Context) -> anyhow::Result<Vec<Message>> {
 // TODO: Replace hardcoded set with configurable list
 fn get_channel_ids() -> Vec<ChannelId> {
     vec![
-        ChannelId::new(GROUP_ONE_CHANNEL_ID),
-        ChannelId::new(GROUP_TWO_CHANNEL_ID),
-        ChannelId::new(GROUP_THREE_CHANNEL_ID),
-        ChannelId::new(GROUP_FOUR_CHANNEL_ID),
+        ChannelId::new(SYSTEMS_CHANNEL_ID),
+        ChannelId::new(MOBILE_CHANNEL_ID),
+        ChannelId::new(WEB_CHANNEL_ID),
+        ChannelId::new(AI_CHANNEL_ID),
     ]
 }
 
