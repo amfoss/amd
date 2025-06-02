@@ -184,24 +184,46 @@ fn format_attendance_list(title: &str, list: &[AttendanceRecord]) -> String {
         );
     }
 
-    let mut by_year: HashMap<i32, Vec<&str>> = HashMap::new();
+    let mut by_group: HashMap<i32, HashMap<i32, Vec<&str>>> = HashMap::new();
     for record in list {
-        if record.year >= 1 && record.year <= 3 {
-            by_year.entry(record.year).or_default().push(&record.name);
-        }
+        by_group
+            .entry(record.group_id)
+            .or_default()
+            .entry(record.year)
+            .or_default()
+            .push(&record.name);
     }
 
     let mut result = format!("# {}\n", title);
+    let mut group_ids: Vec<i32> = by_group.keys().cloned().collect();
+    group_ids.sort();
 
-    for year in 1..=3 {
-        if let Some(names) = by_year.get(&year) {
-            if !names.is_empty() {
-                result.push_str(&format!("### Year {}\n", year));
+    for group_id in group_ids {
+        result.push_str(&format!("## Group {}\n", group_id));
 
-                for name in names {
-                    result.push_str(&format!("- {}\n", name));
+        let by_year = &by_group[&group_id];
+        let mut years: Vec<i32> = by_year.keys().cloned().collect();
+        years.sort();
+
+        let mut group_counts: Vec<(i32, usize)> = by_group
+            .iter()
+            .map(|(&group_id, year_map)| {
+                let total_count = year_map.values().map(|names| names.len()).sum();
+                (group_id, total_count)
+            })
+            .collect();
+        group_counts.sort_by(|a, b| b.1.cmp(&a.1));
+
+        for year in 1..=3 {
+            if let Some(names) = by_year.get(&year) {
+                if !names.is_empty() {
+                    let mut sorted_names = names.clone();
+                    sorted_names.sort();
+
+                    for name in sorted_names {
+                        result.push_str(&format!("- {}\n", name));
+                    }
                 }
-                result.push('\n');
             }
         }
     }
