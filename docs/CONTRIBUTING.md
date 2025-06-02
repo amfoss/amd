@@ -4,39 +4,14 @@ Thank you for considering contributing to our Discord bot written in Rust using 
 
 ## Table of Contents
 
-1. [Getting Started](#getting-started)
-2. [How to Contribute](#how-to-contribute)
+1. [How to Contribute](#how-to-contribute)
     - [Reporting Issues](#reporting-issues)
     - [Suggesting Features](#suggesting-features)
     - [Submitting Code Changes](#submitting-code-changes)
-3. [Coding Standards](#coding-standards)
-4. [Documentation](#documentation)
+2. [Coding Standards](#coding-standards)
+3. [Documentation](#documentation)
 
 ---
-
-## Getting Started
-
-### Prerequisites
-
-- [Rust](https://www.rust-lang.org/tools/install) installed.
-- A [Shuttle](https://www.shuttle.dev/) account and installation.
-- A [Discord Bot Token](https://discord.com/developers/).
-
-### Setup
-
-1. Clone the repository:
-```
-git clone https://github.com/amfoss/amd.git
-cd amd
-```
-
-2. Create a `Secrets.toml` with your Discord token in it.
-```
-touch Secrets.toml
-echo <YOUR TOKEN> >> Secrets.toml
-```
-3. Run the bot locally with `cargo shuttle run`. For instructions on how to deploy, refer [Shuttle docs](https://docs.shuttle.dev/getting-started/quick-start).
-
 
 ## How To Contribute
 
