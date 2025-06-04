@@ -39,6 +39,7 @@ pub async fn fetch_members() -> anyhow::Result<Vec<Member>> {
               currentStreak
               maxStreak
             }
+            track
         }
     }"#;
 

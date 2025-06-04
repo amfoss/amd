@@ -49,7 +49,7 @@ impl Task for StatusUpdateCheck {
     }
 }
 
-type GroupedMember = HashMap<u64, Vec<Member>>;
+type GroupedMember = HashMap<String, Vec<Member>>;
 
 struct ReportConfig {
     time_valid_from: DateTime<chrono_tz::Tz>,
@@ -146,7 +146,7 @@ fn categorize_members(
     updates: Vec<Message>,
 ) -> (GroupedMember, Vec<Member>) {
     let mut nice_list = vec![];
-    let mut naughty_list = HashMap::new();
+    let mut naughty_list: HashMap<String, Vec<Member>> = HashMap::new();
 
     let mut sent_updates: HashSet<String> = HashSet::new();
 
@@ -158,9 +158,9 @@ fn categorize_members(
         if sent_updates.contains(&member.discord_id) {
             nice_list.push(member.clone());
         } else {
-            let group = member.group_id as u64;
+            let track= member.track.clone();
             naughty_list
-                .entry(group)
+                .entry(track)
                 .or_insert_with(Vec::new)
                 .push(member.clone());
         }
@@ -237,8 +237,8 @@ fn format_members(members: &[Member]) -> String {
 
 fn format_defaulters(naughty_list: &GroupedMember) -> String {
     let mut description = String::new();
-    for (group, missed_members) in naughty_list {
-        description.push_str(&format!("## Group {}\n", group));
+    for (track, missed_members) in naughty_list {
+        description.push_str(&format!("## Track - {}\n", track));
         for member in missed_members {
             let status = match member.streak[0].current_streak {
                 0 => ":x:",
