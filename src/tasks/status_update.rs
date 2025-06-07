@@ -49,7 +49,7 @@ impl Task for StatusUpdateCheck {
     }
 }
 
-type GroupedMember = HashMap<String, Vec<Member>>;
+type GroupedMember = HashMap<Option<String>, Vec<Member>>;
 
 struct ReportConfig {
     time_valid_from: DateTime<chrono_tz::Tz>,
@@ -146,7 +146,7 @@ fn categorize_members(
     updates: Vec<Message>,
 ) -> (GroupedMember, Vec<Member>) {
     let mut nice_list = vec![];
-    let mut naughty_list: HashMap<String, Vec<Member>> = HashMap::new();
+    let mut naughty_list: HashMap<Option<String>, Vec<Member>> = HashMap::new();
 
     let mut sent_updates: HashSet<String> = HashSet::new();
 
@@ -238,7 +238,11 @@ fn format_members(members: &[Member]) -> String {
 fn format_defaulters(naughty_list: &GroupedMember) -> String {
     let mut description = String::new();
     for (track, missed_members) in naughty_list {
-        description.push_str(&format!("## Track - {}\n", track));
+        match track{
+            Some(t) => description.push_str(&format!("## Track - {}\n", t)),
+            None => description.push_str(&format!("## Unassigned"))
+        }
+
         for member in missed_members {
             let status = match member.streak[0].current_streak {
                 0 => ":x:",
