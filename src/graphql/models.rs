@@ -28,11 +28,26 @@ pub struct StreakWithMemberId {
 }
 
 #[derive(Clone, Debug, Deserialize)]
-pub struct Streak {
+pub struct StatusOnDate {
+    #[serde(rename = "isSent")]
+    pub is_sent: bool,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+pub struct StatusStreak {
     #[serde(rename = "currentStreak")]
-    pub current_streak: i32,
+    pub current_streak: Option<i32>,
     #[serde(rename = "maxStreak")]
-    pub max_streak: i32,
+    pub max_streak: Option<i32>,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+pub struct MemberStatus {
+    #[serde(rename = "onDate")]
+    pub on_date: Option<StatusOnDate>,
+    pub streak: Option<StatusStreak>,
+    #[serde(rename = "consecutiveMisses")]
+    pub consecutive_misses: Option<i32>,
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -42,10 +57,9 @@ pub struct Member {
     pub name: String,
     #[serde(rename = "discordId")]
     pub discord_id: String,
-    #[serde(default)]
-    pub streak: Vec<Streak>, // Note that Root will NOT have multiple Streak elements but it may be an empty list which is why we use a vector here
     pub track: Option<String>,
     pub year: i32,
+    pub status: Option<MemberStatus>,
 }
 
 #[derive(Debug, Deserialize, Clone)]

@@ -16,7 +16,7 @@ You should have received a copy of the GNU General Public License
 along with this program.  If not, see <https://www.gnu.org/licenses/>.
 */
 use anyhow::{anyhow, Context};
-use chrono::Local;
+use chrono::{Local, NaiveDate};
 use serde_json::Value;
 use tracing::debug;
 
@@ -25,27 +25,41 @@ use crate::graphql::models::{AttendanceRecord, Member};
 use super::{models::StreakWithMemberId, GraphQLClient};
 
 impl GraphQLClient {
-    pub async fn fetch_members(&self) -> anyhow::Result<Vec<Member>> {
+    pub async fn fetch_member_data(&self, date: NaiveDate) -> anyhow::Result<Vec<Member>> {
         let query = r#"
-        {
-          members {
+        query($date: NaiveDate!) {
+          allMembers {
             memberId
             name
             discordId
             groupId
-            streak {
-              currentStreak
-              maxStreak
+            status {
+              onDate(date: $date) {
+                isSent
+              }
+              streak {
+                currentStreak,
+                maxStreak
+              }
+              consecutiveMisses
             }
             track
-        }
-    }"#;
+            year
+          }
+        }"#;
 
         debug!("Sending query {}", query);
+
+        let variables = serde_json::json!({
+            "date": date.format("%Y-%m-%d").to_string()
+        });
+
+        debug!("With variables: {}", variables);
+
         let response = self
             .http()
             .post(self.root_url())
-            .json(&serde_json::json!({"query": query}))
+            .json(&serde_json::json!({"query": query, "variables":variables}))
             .send()
             .await
             .context("Failed to successfully post request")?;
@@ -65,7 +79,7 @@ impl GraphQLClient {
         debug!("Response: {}", response_json);
         let members = response_json
             .get("data")
-            .and_then(|data| data.get("members"))
+            .and_then(|data| data.get("allMembers"))
             .and_then(|members| members.as_array())
             .ok_or_else(|| {
                 anyhow::anyhow!(

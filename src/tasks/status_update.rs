@@ -16,8 +16,9 @@ You should have received a copy of the GNU General Public License
 along with this program.  If not, see <https://www.gnu.org/licenses/>.
 */
 use std::collections::{HashMap, HashSet};
+use std::time::Duration;
 
-use chrono::{DateTime, Utc};
+use chrono::DateTime;
 use serenity::all::{
     CacheHttp, ChannelId, Context, CreateEmbed, CreateMessage, GetMessages, Message,
 };
@@ -33,16 +34,17 @@ use crate::ids::{
 use crate::utils::time::time_until;
 
 /// Checks for status updates daily at 5 AM.
-pub struct StatusUpdateCheck;
+pub struct StatusUpdateReport;
 
 #[async_trait]
-impl Task for StatusUpdateCheck {
+impl Task for StatusUpdateReport {
     fn name(&self) -> &str {
-        "Status Update Check"
+        "Status Update Report"
     }
 
     fn run_in(&self) -> tokio::time::Duration {
-        time_until(5, 00)
+        time_until(5, 15)
+        // Duration::from_secs(1) // for development
     }
 
     async fn run(&self, ctx: Context, client: GraphQLClient) -> anyhow::Result<()> {
@@ -58,40 +60,24 @@ struct ReportConfig {
     special_authors: Vec<&'static str>,
 }
 
-const AMAN_SHAFEEQ: &str = "767636699077410837";
-const CHANDRA_MOULI: &str = "1265880467047976970";
-
 #[instrument(level = "debug", skip(ctx))]
-async fn status_update_check(ctx: Context, client: GraphQLClient) -> anyhow::Result<()> {
-    let updates = get_updates(&ctx).await?;
-    let mut members = client.fetch_members().await?;
+pub async fn status_update_check(ctx: Context, client: GraphQLClient) -> anyhow::Result<()> {
+    let now = chrono::Utc::now().with_timezone(&chrono_tz::Asia::Kolkata);
+    let yesterday = now.date_naive() - chrono::Duration::days(1);
+
+    let mut members = client.fetch_member_data(yesterday).await?;
     members.retain(|member| member.year != 4);
 
     // naughty_list -> members who did not send updates
-    let (mut naughty_list, mut nice_list) = categorize_members(&members, updates);
-    update_streaks_for_members(&client, &mut naughty_list, &mut nice_list).await?;
+    let naughty_list = categorize_members(&members);
 
-    let embed = generate_embed(client, members, naughty_list).await?;
+    let embed = generate_embed(members, naughty_list).await?;
     let msg = CreateMessage::new().embed(embed);
 
     let status_update_channel = ChannelId::new(STATUS_UPDATE_CHANNEL_ID);
     status_update_channel.send_message(ctx.http(), msg).await?;
 
     Ok(())
-}
-
-async fn get_updates(ctx: &Context) -> anyhow::Result<Vec<Message>> {
-    let channel_ids = get_channel_ids();
-    let mut updates = Vec::new();
-
-    let get_messages_builder = GetMessages::new().limit(100);
-    for channel in channel_ids {
-        let messages = channel.messages(ctx.http(), get_messages_builder).await?;
-        let valid_updates = messages.into_iter().filter(is_valid_status_update);
-        updates.extend(valid_updates);
-    }
-
-    Ok(updates)
 }
 
 // TODO: Replace hardcoded set with configurable list
@@ -104,96 +90,32 @@ fn get_channel_ids() -> Vec<ChannelId> {
     ]
 }
 
-fn is_valid_status_update(msg: &Message) -> bool {
-    let report_config = get_report_config();
-    let content = msg.content.to_lowercase();
-
-    let is_within_timeframe = DateTime::<Utc>::from_timestamp(msg.timestamp.timestamp(), 0)
-        .expect("Valid timestamp")
-        .with_timezone(&chrono_tz::Asia::Kolkata)
-        >= report_config.time_valid_from;
-
-    let has_required_keywords = report_config
-        .keywords
-        .iter()
-        .all(|keyword| content.contains(keyword));
-    let is_special_author = report_config
-        .special_authors
-        .contains(&msg.author.id.to_string().as_str());
-    let is_valid_content =
-        has_required_keywords || (is_special_author && content.contains("regards"));
-
-    is_within_timeframe && is_valid_content
-}
-
-// TODO: Parts of this could also be removed from code like channel_ids
-fn get_report_config() -> ReportConfig {
-    let now = chrono::Utc::now().with_timezone(&chrono_tz::Asia::Kolkata);
-    let yesterday = now.date_naive() - chrono::Duration::days(1);
-    let time_valid_from = yesterday
-        .and_hms_opt(20, 0, 0)
-        .expect("Valid timestamp")
-        .and_local_timezone(chrono_tz::Asia::Kolkata)
-        .earliest()
-        .expect("Valid timezone conversion");
-
-    ReportConfig {
-        time_valid_from,
-        keywords: vec!["namah shivaya", "regards"],
-        special_authors: vec![AMAN_SHAFEEQ, CHANDRA_MOULI],
-    }
-}
-
-fn categorize_members(
-    members: &Vec<Member>,
-    updates: Vec<Message>,
-) -> (GroupedMember, Vec<Member>) {
-    let mut nice_list = vec![];
+fn categorize_members(members: &Vec<Member>) -> GroupedMember {
     let mut naughty_list: HashMap<Option<String>, Vec<Member>> = HashMap::new();
 
-    let mut sent_updates: HashSet<String> = HashSet::new();
-
-    for message in updates.iter() {
-        sent_updates.insert(message.author.id.to_string());
-    }
-
     for member in members {
-        if sent_updates.contains(&member.discord_id) {
-            nice_list.push(member.clone());
-        } else {
+        let Some(status) = &member.status else {
+            continue;
+        };
+        let Some(on_date) = &status.on_date else {
+            continue;
+        };
+
+        if !on_date.is_sent {
             let track = member.track.clone();
             naughty_list.entry(track).or_default().push(member.clone());
         }
     }
 
-    (naughty_list, nice_list)
-}
-
-async fn update_streaks_for_members(
-    client: &GraphQLClient,
-    naughty_list: &mut GroupedMember,
-    nice_list: &mut Vec<Member>,
-) -> anyhow::Result<()> {
-    for member in nice_list {
-        client.increment_streak(member).await?;
-    }
-
-    for members in naughty_list.values_mut() {
-        for member in members {
-            client.reset_streak(member).await?;
-        }
-    }
-
-    Ok(())
+    naughty_list
 }
 
 async fn generate_embed(
-    client: GraphQLClient,
     members: Vec<Member>,
     naughty_list: GroupedMember,
 ) -> anyhow::Result<CreateEmbed> {
     let (all_time_high, all_time_high_members, current_highest, current_highest_members) =
-        get_leaderboard_stats(client, members).await?;
+        get_leaderboard_stats(members).await?;
     let mut description = String::new();
 
     description.push_str("# Leaderboard Updates\n");
@@ -242,9 +164,11 @@ fn format_defaulters(naughty_list: &GroupedMember) -> String {
         }
 
         for member in missed_members {
-            let status = match member.streak[0].current_streak {
-                0 => ":x:",
-                -1 => ":x::x:",
+            let status = match member.status.as_ref().and_then(|s| s.consecutive_misses) {
+                None => ":zzz:",
+                Some(1) => ":x:",
+                Some(2) => ":x::x:",
+                Some(3) => ":x::x::x:",
                 _ => ":headstone:",
             };
             description.push_str(&format!("- {} | {}\n", member.name, status));
@@ -255,15 +179,10 @@ fn format_defaulters(naughty_list: &GroupedMember) -> String {
 }
 
 async fn get_leaderboard_stats(
-    client: GraphQLClient,
     members: Vec<Member>,
 ) -> anyhow::Result<(i32, Vec<Member>, i32, Vec<Member>)> {
-    let streaks = client.fetch_streaks().await?;
-    let member_map: HashMap<i32, &Member> = members.iter().map(|m| (m.member_id, m)).collect();
-
-    let (all_time_high, all_time_high_members) = find_highest_streak(&streaks, &member_map, true);
-    let (current_highest, current_highest_members) =
-        find_highest_streak(&streaks, &member_map, false);
+    let (all_time_high, all_time_high_members) = find_highest_streak(&members, true);
+    let (current_highest, current_highest_members) = find_highest_streak(&members, false);
 
     Ok((
         all_time_high,
@@ -273,33 +192,34 @@ async fn get_leaderboard_stats(
     ))
 }
 
-fn find_highest_streak(
-    streaks: &[StreakWithMemberId],
-    member_map: &HashMap<i32, &Member>,
-    is_all_time: bool,
-) -> (i32, Vec<Member>) {
+fn find_highest_streak(members: &Vec<Member>, is_all_time: bool) -> (i32, Vec<Member>) {
     let mut highest = 0;
     let mut highest_members = Vec::new();
 
-    for streak in streaks {
-        if let Some(member) = member_map.get(&streak.member_id) {
-            let streak_value = if is_all_time {
-                streak.max_streak
-            } else {
-                streak.current_streak
-            };
+    for member in members {
+        let streak_value = member
+            .status
+            .as_ref()
+            .and_then(|s| s.streak.as_ref())
+            .and_then(|streak| {
+                if is_all_time {
+                    streak.max_streak
+                } else {
+                    streak.current_streak
+                }
+            })
+            .unwrap_or(0); // default to 0 if no streak info
 
-            match streak_value.cmp(&highest) {
-                std::cmp::Ordering::Greater => {
-                    highest = streak_value;
-                    highest_members.clear();
-                    highest_members.push((*member).clone());
-                }
-                std::cmp::Ordering::Equal => {
-                    highest_members.push((*member).clone());
-                }
-                _ => {}
+        match streak_value.cmp(&highest) {
+            std::cmp::Ordering::Greater => {
+                highest = streak_value;
+                highest_members.clear();
+                highest_members.push(member.clone());
             }
+            std::cmp::Ordering::Equal => {
+                highest_members.push(member.clone());
+            }
+            _ => {}
         }
     }
 
