@@ -15,22 +15,16 @@ GNU General Public License for more details.
 You should have received a copy of the GNU General Public License
 along with this program.  If not, see <https://www.gnu.org/licenses/>.
 */
-use std::collections::{HashMap, HashSet};
-use std::time::Duration;
+use std::collections::HashMap;
 
-use chrono::DateTime;
-use serenity::all::{
-    CacheHttp, ChannelId, Context, CreateEmbed, CreateMessage, GetMessages, Message,
-};
+use serenity::all::{CacheHttp, ChannelId, Context, CreateEmbed, CreateMessage};
 use serenity::async_trait;
 use tracing::instrument;
 
 use super::Task;
 use crate::graphql::models::Member;
 use crate::graphql::GraphQLClient;
-use crate::ids::{
-    AI_CHANNEL_ID, MOBILE_CHANNEL_ID, STATUS_UPDATE_CHANNEL_ID, SYSTEMS_CHANNEL_ID, WEB_CHANNEL_ID,
-};
+use crate::ids::STATUS_UPDATE_CHANNEL_ID;
 use crate::utils::time::time_until;
 
 /// Checks for status updates daily at 5 AM.
@@ -54,12 +48,6 @@ impl Task for StatusUpdateReport {
 
 type GroupedMember = HashMap<Option<String>, Vec<Member>>;
 
-struct ReportConfig {
-    time_valid_from: DateTime<chrono_tz::Tz>,
-    keywords: Vec<&'static str>,
-    special_authors: Vec<&'static str>,
-}
-
 #[instrument(level = "debug", skip(ctx))]
 pub async fn status_update_check(ctx: Context, client: GraphQLClient) -> anyhow::Result<()> {
     let now = chrono::Utc::now().with_timezone(&chrono_tz::Asia::Kolkata);
@@ -78,16 +66,6 @@ pub async fn status_update_check(ctx: Context, client: GraphQLClient) -> anyhow:
     status_update_channel.send_message(ctx.http(), msg).await?;
 
     Ok(())
-}
-
-// TODO: Replace hardcoded set with configurable list
-fn get_channel_ids() -> Vec<ChannelId> {
-    vec![
-        ChannelId::new(SYSTEMS_CHANNEL_ID),
-        ChannelId::new(MOBILE_CHANNEL_ID),
-        ChannelId::new(WEB_CHANNEL_ID),
-        ChannelId::new(AI_CHANNEL_ID),
-    ]
 }
 
 fn categorize_members(members: &Vec<Member>) -> GroupedMember {
