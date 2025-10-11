@@ -22,7 +22,7 @@ use tracing::debug;
 
 use crate::graphql::models::{AttendanceRecord, Member};
 
-use super::{models::StreakWithMemberId, GraphQLClient};
+use super::GraphQLClient;
 
 impl GraphQLClient {
     pub async fn fetch_member_data(&self, date: NaiveDate) -> anyhow::Result<Vec<Member>> {
@@ -141,49 +141,5 @@ impl GraphQLClient {
             attendance.len()
         );
         Ok(attendance)
-    }
-
-    pub async fn fetch_streaks(&self) -> anyhow::Result<Vec<StreakWithMemberId>> {
-        let query = r#"
-        {
-          streaks {
-            memberId
-            currentStreak
-            maxStreak
-          }
-        }
-    "#;
-
-        debug!("Sending query {}", query);
-        let response = self
-            .http()
-            .post(self.root_url())
-            .json(&serde_json::json!({"query": query}))
-            .send()
-            .await
-            .context("Failed to successfully post request")?;
-
-        if !response.status().is_success() {
-            return Err(anyhow!(
-                "Server responded with an error: {:?}",
-                response.status()
-            ));
-        }
-
-        let response_json: serde_json::Value = response
-            .json()
-            .await
-            .context("Failed to serialize response")?;
-
-        debug!("Response: {}", response_json);
-        let streaks = response_json
-            .get("data")
-            .and_then(|data| data.get("streaks"))
-            .and_then(|streaks| {
-                serde_json::from_value::<Vec<StreakWithMemberId>>(streaks.clone()).ok()
-            })
-            .context("Failed to parse streaks data")?;
-
-        Ok(streaks)
     }
 }

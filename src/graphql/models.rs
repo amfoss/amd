@@ -18,16 +18,6 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 use serde::Deserialize;
 
 #[derive(Clone, Debug, Deserialize)]
-pub struct StreakWithMemberId {
-    #[serde(rename = "memberId")]
-    pub member_id: i32,
-    #[serde(rename = "currentStreak")]
-    pub current_streak: i32,
-    #[serde(rename = "maxStreak")]
-    pub max_streak: i32,
-}
-
-#[derive(Clone, Debug, Deserialize)]
 pub struct StatusOnDate {
     #[serde(rename = "isSent")]
     pub is_sent: bool,

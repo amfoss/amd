@@ -26,7 +26,7 @@ use serenity::async_trait;
 use tracing::instrument;
 
 use super::Task;
-use crate::graphql::models::{Member, StreakWithMemberId};
+use crate::graphql::models::Member;
 use crate::graphql::GraphQLClient;
 use crate::ids::{
     AI_CHANNEL_ID, MOBILE_CHANNEL_ID, STATUS_UPDATE_CHANNEL_ID, SYSTEMS_CHANNEL_ID, WEB_CHANNEL_ID,
