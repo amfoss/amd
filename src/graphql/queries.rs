@@ -36,6 +36,7 @@ impl GraphQLClient {
             status {
               onDate(date: $date) {
                 isSent
+                onBreak
               }
               streak {
                 currentStreak,

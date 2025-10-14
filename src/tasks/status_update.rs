@@ -79,7 +79,7 @@ fn categorize_members(members: &Vec<Member>) -> GroupedMember {
             continue;
         };
 
-        if !on_date.is_sent {
+        if !on_date.on_break && !on_date.is_sent {
             let track = member.track.clone();
             naughty_list.entry(track).or_default().push(member.clone());
         }

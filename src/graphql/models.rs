@@ -21,6 +21,8 @@ use serde::Deserialize;
 pub struct StatusOnDate {
     #[serde(rename = "isSent")]
     pub is_sent: bool,
+    #[serde(rename = "onBreak")]
+    pub on_break: bool,
 }
 
 #[derive(Clone, Debug, Deserialize)]
