@@ -55,7 +55,7 @@ pub async fn status_update_check(ctx: Context, client: GraphQLClient) -> anyhow:
     let yesterday = now.date_naive() - chrono::Duration::days(1);
 
     let mut members = client.fetch_member_data(yesterday).await?;
-    members.retain(|member| member.year != 4);
+    members.retain(|member| member.year != Some(4));
 
     // naughty_list -> members who did not send updates
     let (naughty_list, years_on_break) = categorize_members(&members);
@@ -83,7 +83,9 @@ fn categorize_members(members: &Vec<Member>) -> (GroupedMember, Vec<i32>) {
         };
 
         if on_date.on_break {
-            years_on_break.insert(member.year);
+            if let Some(year) = member.year {
+                years_on_break.insert(year);
+            }
             continue;
         }
 
@@ -176,17 +178,21 @@ async fn kick_lazy_bums(ctx: &Context, naughty_list: Vec<Member>) {
             .unwrap_or(0);
 
         if consecutive_misses > 3 {
-            let discord_id = match member.discord_id.parse::<u64>() {
+            let Some(id_str) = member.discord_id.as_deref() else {
+                warn!("Cannot kick {}: Missing Discord ID", member.name);
+                return;
+            };
+
+            let discord_id: u64 = match id_str.parse() {
                 Ok(id) => id,
                 Err(_) => {
                     warn!(
                         "Cannot kick {}: Invalid Discord ID '{}'",
-                        member.name, member.discord_id
+                        member.name, id_str
                     );
                     return;
                 }
             };
-
             let reason = "You have been kicked for not sending status updates, reach out to a mentor for further details.";
 
             match guild_id
@@ -215,7 +221,7 @@ fn format_defaulters(naughty_list: &GroupedMember) -> String {
     for (track, missed_members) in naughty_list {
         match track {
             Some(t) => description.push_str(&format!("## Track - {t}\n")),
-            None => description.push_str("## Unassigned"),
+            None => description.push_str("## Unassigned\n"),
         }
 
         for member in missed_members {

@@ -48,9 +48,9 @@ pub struct Member {
     pub member_id: i32,
     pub name: String,
     #[serde(rename = "discordId")]
-    pub discord_id: String,
+    pub discord_id: Option<String>,
     pub track: Option<String>,
-    pub year: i32,
+    pub year: Option<i32>,
     pub status: Option<MemberStatus>,
 }
 
