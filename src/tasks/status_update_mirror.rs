@@ -19,12 +19,12 @@ use super::Task;
 use crate::graphql::GraphQLClient;
 use anyhow::Context;
 use async_trait::async_trait;
-use serenity::client::Context as ClientContext;
-use serenity::prelude::CacheHttp;
-use serenity::model::webhook::Webhook;
 use serenity::builder::CreateWebhook;
 use serenity::builder::ExecuteWebhook;
-use serenity::model::id::{UserId};
+use serenity::client::Context as ClientContext;
+use serenity::model::id::UserId;
+use serenity::model::webhook::Webhook;
+use serenity::prelude::CacheHttp;
 use std::collections::HashMap;
 
 pub struct MirrorNewUpdates;
@@ -82,18 +82,18 @@ pub async fn mirror_new_updates(ctx: ClientContext, client: GraphQLClient) -> an
                 continue;
             }
             if let Some(discord_id) = &member.discord_id {
-            let discord_id: u64 = discord_id.parse()?;
+                let discord_id: u64 = discord_id.parse()?;
 
-            send_update(
-                &ctx,
-                member.name.clone(),
-                discord_id,
-                member.track.clone().unwrap(),
-                member.group_id.unwrap(),
-                email.body.clone(),
-            )
-            .await?;
-        }
+                send_update(
+                    &ctx,
+                    member.name.clone(),
+                    discord_id,
+                    member.track.clone().unwrap(),
+                    member.group_id.unwrap(),
+                    email.body.clone(),
+                )
+                .await?;
+            }
         }
     }
     Ok(())
@@ -103,10 +103,12 @@ async fn get_or_create_webhook(
     ctx: &ClientContext,
     channel_id: ChannelId,
 ) -> anyhow::Result<Webhook> {
-
     let hooks = channel_id.webhooks(ctx.http()).await?;
 
-    if let Some(hook) = hooks.into_iter().find(|h| h.name == Some("amD Updates".to_string())) {
+    if let Some(hook) = hooks
+        .into_iter()
+        .find(|h| h.name == Some("amD Updates".to_string()))
+    {
         return Ok(hook);
     }
 
@@ -124,7 +126,6 @@ async fn send_webhook_message(
     avatar_url: String,
     content: String,
 ) -> anyhow::Result<()> {
-
     let webhook = get_or_create_webhook(ctx, channel_id).await?;
 
     let builder = ExecuteWebhook::new()
@@ -137,11 +138,7 @@ async fn send_webhook_message(
     Ok(())
 }
 
-async fn get_avatar_url(
-    ctx: &ClientContext,
-    discord_id: u64,
-) -> anyhow::Result<String> {
-
+async fn get_avatar_url(ctx: &ClientContext, discord_id: u64) -> anyhow::Result<String> {
     let user = ctx.http.get_user(UserId::new(discord_id)).await?;
 
     let avatar = user
@@ -175,13 +172,7 @@ async fn send_update(
 
     let avatar_url = get_avatar_url(ctx, discord_id).await?;
 
-    send_webhook_message(
-        ctx,
-        channel,
-        name,
-        avatar_url,
-        content,
-    ).await?;
+    send_webhook_message(ctx, channel, name, avatar_url, content).await?;
 
     Ok(())
 }
