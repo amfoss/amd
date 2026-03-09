@@ -20,3 +20,4 @@ tracing-subscriber = { version = "0.3.20", features = ["env-filter"] }
 imap = "3.0.0-alpha.12"
 mailparse = "0.15"
 html2text = "0.12"
+rand = "0.10"
