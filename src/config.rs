@@ -47,8 +47,7 @@ impl Default for Config {
             owner_id: parse_owner_id_env("OWNER_ID"),
             prefix_string: String::from("$"),
             root_url: std::env::var("ROOT_URL").expect("ROOT_URL was not found in env"),
-            api_key: std::env::var("AMD_API_KEY")
-                .expect("AMD_API_KEY was not found in env"),
+            api_key: std::env::var("AMD_API_KEY").expect("AMD_API_KEY was not found in env"),
         }
     }
 }

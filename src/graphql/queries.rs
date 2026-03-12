@@ -20,7 +20,7 @@ use chrono::{Local, NaiveDate};
 use serde_json::Value;
 use tracing::debug;
 
-use crate::graphql::models::{AttendanceRecord, Member};
+use crate::graphql::models::{AttendanceRecord, LeaveCountRecord, Member, MemberSummary};
 
 use super::GraphQLClient;
 
@@ -144,5 +144,128 @@ impl GraphQLClient {
             attendance.len()
         );
         Ok(attendance)
+    }
+
+    pub async fn fetch_member_summary(
+        &self,
+        discord_id: &str,
+        start_date: NaiveDate,
+        end_date: NaiveDate,
+    ) -> anyhow::Result<MemberSummary> {
+        let query: &str = r#"
+        query($discord_id: String!, $start_date: NaiveDate!, $end_date: NaiveDate!){
+            member(discordId : $discord_id){
+                attendance{
+                    presentCount(startDate : $start_date,endDate : $end_date)
+                    absentCount(startDate : $start_date,endDate : $end_date)
+                }
+                status{
+                    updateCount(startDate : $start_date,endDate : $end_date)
+                }
+            }
+        }
+        "#;
+
+        let variables = serde_json::json!({
+            "start_date": start_date.format("%Y-%m-%d").to_string(),
+            "end_date": end_date.format("%Y-%m-%d").to_string(),
+            "discord_id": discord_id
+        });
+
+        debug!("Sending query {}", query);
+        debug!("With variables {:?}", variables);
+
+        let response = self
+            .http()
+            .post(self.root_url())
+            .bearer_auth(self.api_key())
+            .json(&serde_json::json!({ "query": query , "variables":variables}))
+            .send()
+            .await
+            .context("Failed to send GraphQL request")?;
+        debug!("Response status: {:?}", response.status());
+
+        let json: Value = response
+            .json()
+            .await
+            .context("Failed to parse response as JSON")?;
+
+        debug!("Response JSON: {:#?}", json);
+
+        let attendance = &json["data"]["member"]["attendance"];
+        let status = &json["data"]["member"]["status"];
+
+        let present: i32 = attendance["presentCount"].as_i64().unwrap_or(0) as i32;
+        let absent: i32 = attendance["absentCount"].as_i64().unwrap_or(0) as i32;
+        let updates: i32 = status["updateCount"].as_i64().unwrap_or(0) as i32;
+
+        let total_attendance = present + absent;
+
+        let attendance_percent = if total_attendance == 0 {
+            0.0
+        } else {
+            (present as f32 * 100.0) / total_attendance as f32
+        };
+
+        let total_days = (end_date - start_date).num_days().max(1);
+
+        let update_percent = (updates as f32 * 100.0) / total_days as f32;
+
+        let summary = MemberSummary {
+            present_percent: attendance_percent,
+            updates_percent: update_percent,
+        };
+
+        Ok(summary)
+    }
+
+    pub async fn fetch_leaves(
+        &self,
+        discord_id: &str,
+        start_date: NaiveDate,
+        end_date: NaiveDate,
+    ) -> anyhow::Result<LeaveCountRecord> {
+        let query = r#" 
+            query ($discord_id: String!, $start_date: String!, $end_date: String!) {
+            member(discordId :$discord_id ) {
+                leaveCount(startDate: $start_date,endDate: $end_date)
+            }
+            }
+        "#;
+
+        let variables = serde_json::json!({
+            "discord_id": discord_id,
+            "start_date": start_date.format("%Y-%m-%d").to_string(),
+            "end_date": end_date.format("%Y-%m-%d").to_string(),
+        });
+
+        debug!("Sending query {}", query);
+        debug!("With variables {:?}", variables);
+
+        let response = self
+            .http()
+            .post(self.root_url())
+            .bearer_auth(self.api_key())
+            .json(&serde_json::json!({
+                "query": query,
+                "variables": variables
+            }))
+            .send()
+            .await
+            .context("Failed to send GraphQL request")?;
+
+        debug!("Response status: {:?}", response.status());
+
+        let json: Value = response
+            .json()
+            .await
+            .context("Failed to parse response as JSON")?;
+
+        let leaves: LeaveCountRecord = LeaveCountRecord {
+            discord_id: discord_id.to_string(),
+            leave_count: json["data"]["members"]["leaveCount"].as_i64().unwrap_or(0) as i32,
+        };
+
+        Ok(leaves)
     }
 }

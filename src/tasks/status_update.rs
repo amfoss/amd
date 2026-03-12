@@ -169,9 +169,9 @@ fn format_breaks(mut years_on_break: Vec<i32>) -> String {
                 1 => "First Years",
                 2 => "Second Years",
                 3 => "Third Years",
-                _ => return format!("Year {}", year),
+                _ => return format!("Year {year}"),
             };
-            format!("- {}", year_label)
+            format!("- {year_label}")
         })
         .collect::<Vec<_>>()
         .join("\n");

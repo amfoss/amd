@@ -15,8 +15,8 @@ GNU General Public License for more details.
 You should have received a copy of the GNU General Public License
 along with this program.  If not, see <https://www.gnu.org/licenses/>.
 */
+use chrono::{NaiveDate, NaiveDateTime};
 use serde::Deserialize;
-
 #[derive(Clone, Debug, Deserialize)]
 pub struct StatusOnDate {
     #[serde(rename = "isSent")]
@@ -62,4 +62,34 @@ pub struct AttendanceRecord {
     pub is_present: bool,
     #[serde(rename = "timeIn")]
     pub time_in: Option<String>,
+}
+
+#[derive(Debug, Deserialize, Clone)]
+pub struct MemberSummary {
+    #[serde(rename = "presentPercent")]
+    pub present_percent: f32,
+    #[serde(rename = "updatesPercent")]
+    pub updates_percent: f32,
+}
+
+#[derive(Debug, Deserialize, Clone)]
+pub struct LeaveCountRecord {
+    #[serde(rename = "discordId")]
+    pub discord_id: String,
+    #[serde(rename = "leaveCount")]
+    pub leave_count: i32,
+}
+
+#[derive(Debug, Deserialize, Clone)]
+pub struct LeaveRecord {
+    #[serde(rename = "discordId")]
+    pub discord_id: String,
+    #[serde(rename = "fromDate")]
+    pub from_date: NaiveDate,
+    pub duration: i32,
+    pub reason: String,
+    #[serde(rename = "approvedBy")]
+    pub approved_by: Option<String>,
+    #[serde(rename = "appliedAt")]
+    pub applied_at: NaiveDateTime,
 }
