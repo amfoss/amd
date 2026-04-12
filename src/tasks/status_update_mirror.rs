@@ -81,19 +81,16 @@ pub async fn mirror_new_updates(ctx: ClientContext, client: GraphQLClient) -> an
             if member.track.is_none() || member.group_id.is_none() {
                 continue;
             }
-            if let Some(discord_id) = &member.discord_id {
-                let discord_id: u64 = discord_id.parse()?;
 
-                send_update(
-                    &ctx,
-                    member.name.clone(),
-                    discord_id,
-                    member.track.clone().unwrap(),
-                    member.group_id.unwrap(),
-                    email.body.clone(),
-                )
-                .await?;
-            }
+            send_update(
+                &ctx,
+                member.name.clone(),
+                member.discord_id.as_deref(),
+                member.track.clone().unwrap(),
+                member.group_id.unwrap(),
+                email.body.clone(),
+            )
+            .await?;
         }
     }
     Ok(())
@@ -148,10 +145,31 @@ async fn get_avatar_url(ctx: &ClientContext, discord_id: u64) -> anyhow::Result<
     Ok(avatar)
 }
 
+async fn get_bot_avatar_url(ctx: &ClientContext) -> anyhow::Result<String> {
+    let bot_user = ctx.http.get_current_user().await?;
+
+    Ok(bot_user
+        .avatar_url()
+        .unwrap_or_else(|| bot_user.default_avatar_url()))
+}
+
+async fn resolve_avatar_url(
+    ctx: &ClientContext,
+    discord_id: Option<&str>,
+) -> anyhow::Result<String> {
+    match discord_id {
+        Some(id_str) => match id_str.parse::<u64>() {
+            Ok(id) => get_avatar_url(ctx, id).await,
+            Err(_) => get_bot_avatar_url(ctx).await,
+        },
+        None => get_bot_avatar_url(ctx).await,
+    }
+}
+
 async fn send_update(
     ctx: &ClientContext,
     name: String,
-    discord_id: u64,
+    discord_id: Option<&str>,
     track: String,
     group: i32,
     content: String,
@@ -170,7 +188,7 @@ async fn send_update(
 
     let channel = ChannelId::new(channel_id);
 
-    let avatar_url = get_avatar_url(ctx, discord_id).await?;
+    let avatar_url = resolve_avatar_url(ctx, discord_id).await?;
 
     send_webhook_message(ctx, channel, name, avatar_url, content).await?;
 
