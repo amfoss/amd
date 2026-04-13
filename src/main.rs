@@ -107,7 +107,9 @@ fn prepare_data(config: &Config, reload_handle: ReloadHandle) -> Data {
 async fn build_client(config: &Config, data: Data) -> Result<Client, anyhow::Error> {
     ClientBuilder::new(
         config.discord_token.clone(),
-        GatewayIntents::non_privileged() | GatewayIntents::MESSAGE_CONTENT,
+        GatewayIntents::non_privileged()
+            | GatewayIntents::MESSAGE_CONTENT
+            | GatewayIntents::GUILD_MEMBERS,
     )
     .framework(build_framework(
         config.owner_id,
@@ -159,6 +161,53 @@ async fn event_handler(
         }
         FullEvent::ReactionRemove { removed_reaction } => {
             handle_reaction(ctx, removed_reaction, data, false).await?;
+        }
+
+        FullEvent::GuildMemberRemoval {
+            guild_id: _,
+            user,
+            member_data_if_available: Some(member),
+        } => {
+            let roles: Vec<String> = member
+                .roles
+                .iter()
+                .filter(|r| r.get() != member.guild_id.get())
+                .map(|r| r.get().to_string())
+                .collect();
+
+            if let Err(e) = data
+                .graphql_client
+                .save_member_roles(user.id.to_string(), roles)
+                .await
+            {
+                println!("Failed to save roles: {:?}", e);
+            }
+        }
+        FullEvent::GuildMemberAddition { new_member } => {
+            let (exists, roles) = match data
+                .graphql_client
+                .get_member_roles(new_member.user.id.to_string())
+                .await
+            {
+                Ok(r) => r,
+                Err(e) => {
+                    println!("Failed to fetch roles: {:?}", e);
+                    (false, vec![])
+                }
+            };
+
+            if let Ok(member) = new_member.guild_id.member(ctx, new_member.user.id).await {
+                // restore roles
+                for role in roles {
+                    if let Ok(role_id) = role.parse::<u64>() {
+                        let _ = member.add_role(ctx, RoleId::new(role_id)).await;
+                    }
+                }
+                // probated role
+                if exists {
+                    let _ = member.add_role(ctx, RoleId::new(1484798446228475905)).await;
+                }
+            }
         }
         _ => {}
     }
