@@ -55,7 +55,7 @@ pub async fn status_update_check(ctx: Context, client: GraphQLClient) -> anyhow:
     let yesterday = now.date_naive() - chrono::Duration::days(1);
 
     let mut members = client.fetch_member_data(yesterday).await?;
-    members.retain(|member| member.year != Some(4));
+    members.retain(|member| !matches!(member.year, Some(4) | None));
 
     // naughty_list -> members who did not send updates
     let (naughty_list, years_on_break) = categorize_members(&members);
