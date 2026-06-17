@@ -40,7 +40,10 @@ use serenity::{
 use trace::{setup_tracing, ReloadHandle};
 use tracing::{debug, info, instrument};
 
-use std::collections::HashMap;
+use std::{
+    collections::{HashMap, HashSet},
+    sync::{Arc, Mutex},
+};
 
 type Error = Box<dyn std::error::Error + Send + Sync>;
 type Context<'a> = PoiseContext<'a, Data, Error>;
@@ -49,6 +52,7 @@ type Context<'a> = PoiseContext<'a, Data, Error>;
 #[derive(Clone)]
 struct Data {
     reaction_roles: HashMap<ReactionType, RoleId>,
+    recent_random_picks: Arc<Mutex<HashSet<UserId>>>,
     log_reload_handle: ReloadHandle,
     graphql_client: GraphQLClient,
 }
@@ -58,6 +62,7 @@ impl Data {
     fn new(reload_handle: ReloadHandle, root_url: String, api_key: String) -> Self {
         Data {
             reaction_roles: HashMap::new(),
+            recent_random_picks: Arc::new(Mutex::new(HashSet::new())),
             log_reload_handle: reload_handle,
             graphql_client: GraphQLClient::new(root_url, api_key),
         }
