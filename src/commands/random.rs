@@ -5,7 +5,7 @@ use crate::{
 use rand::seq::IteratorRandom;
 use serenity::all::{Mentionable as _, RoleId};
 
-#[poise::command(prefix_command)]
+#[poise::command(slash_command)]
 pub async fn random(ctx: Context<'_>) -> Result<(), Error> {
     let guild = ctx.guild_id().ok_or("No guild id")?;
     let members = guild.members(ctx.http(), None, None).await?;
