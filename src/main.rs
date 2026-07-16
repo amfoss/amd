@@ -42,6 +42,7 @@ use tracing::{debug, info, instrument};
 
 use std::{
     collections::{HashMap, HashSet},
+    path::PathBuf,
     sync::{Arc, Mutex},
 };
 
@@ -53,19 +54,46 @@ type Context<'a> = PoiseContext<'a, Data, Error>;
 struct Data {
     reaction_roles: HashMap<ReactionType, RoleId>,
     recent_random_picks: Arc<Mutex<HashSet<UserId>>>,
+    recent_picks_path: PathBuf,
     log_reload_handle: ReloadHandle,
     graphql_client: GraphQLClient,
 }
 
 impl Data {
     /// Returns a new [`Data`] with an empty `reaction_roles` field and the passed-in `reload_handle`.
-    fn new(reload_handle: ReloadHandle, root_url: String, api_key: String) -> Self {
+    fn new(
+        reload_handle: ReloadHandle,
+        root_url: String,
+        api_key: String,
+        recent_picks_path: String,
+    ) -> Self {
+        let recent_picks_path = PathBuf::from(recent_picks_path);
+        let recent_random_picks = Arc::new(Mutex::new(Self::load_recent_picks(&recent_picks_path)));
         Data {
             reaction_roles: HashMap::new(),
-            recent_random_picks: Arc::new(Mutex::new(HashSet::new())),
+            recent_random_picks,
+            recent_picks_path,
             log_reload_handle: reload_handle,
             graphql_client: GraphQLClient::new(root_url, api_key),
         }
+    }
+
+    fn load_recent_picks(path: &PathBuf) -> HashSet<UserId> {
+        std::fs::read_to_string(path)
+            .ok()
+            .and_then(|s| serde_json::from_str(&s).ok())
+            .unwrap_or_default()
+    }
+
+    fn save_recent_picks(&self) {
+        let picks = self.recent_random_picks.lock().unwrap();
+
+        if let Some(parent) = self.recent_picks_path.parent() {
+            std::fs::create_dir_all(parent).unwrap();
+        }
+
+        let json = serde_json::to_string(&*picks).unwrap();
+        std::fs::write(&self.recent_picks_path, json).unwrap();
     }
 }
 
@@ -104,6 +132,7 @@ fn prepare_data(config: &Config, reload_handle: ReloadHandle) -> Data {
         reload_handle,
         config.root_url.clone(),
         config.api_key.clone(),
+        config.recent_picks_path.clone(),
     );
     data.populate_with_reaction_roles();
     data

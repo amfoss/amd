@@ -35,6 +35,7 @@ pub struct Config {
     pub prefix_string: String,
     pub root_url: String,
     pub api_key: String,
+    pub recent_picks_path: String,
 }
 
 impl Default for Config {
@@ -48,6 +49,8 @@ impl Default for Config {
             prefix_string: String::from("$"),
             root_url: std::env::var("ROOT_URL").expect("ROOT_URL was not found in env"),
             api_key: std::env::var("AMD_API_KEY").expect("AMD_API_KEY was not found in env"),
+            recent_picks_path: std::env::var("RECENT_PICKS_PATH")
+                .unwrap_or_else(|_| String::from("data/recent_picks.json")),
         }
     }
 }

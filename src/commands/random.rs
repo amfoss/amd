@@ -1,24 +1,40 @@
 use crate::{
-    ids::{FIRST_YEAR_ROLE_ID, SECOND_YEAR_ROLE_ID},
+    ids::{FIRST_YEAR_ROLE_ID, SECOND_YEAR_ROLE_ID, THIRD_YEAR_ROLE_ID},
     Context, Error,
 };
 use rand::seq::IteratorRandom;
-use serenity::all::{Mentionable as _, RoleId, UserId};
+use serenity::all::{Mentionable as _, Role, RoleId, UserId};
 use std::collections::HashSet;
 
 #[poise::command(slash_command)]
-pub async fn random(ctx: Context<'_>) -> Result<(), Error> {
+pub async fn random(
+    ctx: Context<'_>,
+    count: Option<u32>,
+    role1: Option<Role>,
+    role2: Option<Role>,
+    role3: Option<Role>,
+) -> Result<(), Error> {
     let guild = ctx.guild_id().ok_or("No guild id")?;
     let members = guild.members(ctx.http(), None, None).await?;
 
-    let first_year_role = RoleId::new(FIRST_YEAR_ROLE_ID);
-    let second_year_role = RoleId::new(SECOND_YEAR_ROLE_ID);
+    let count = count.unwrap_or(3) as usize;
+    let mut selected_roles: HashSet<RoleId> = [role1, role2, role3]
+        .into_iter()
+        .flatten()
+        .map(|role| role.id)
+        .collect();
+
+    if selected_roles.is_empty() {
+        selected_roles.extend([
+            RoleId::new(FIRST_YEAR_ROLE_ID),
+            RoleId::new(SECOND_YEAR_ROLE_ID),
+            RoleId::new(THIRD_YEAR_ROLE_ID),
+        ]);
+    }
+
     let eligible_members: Vec<_> = members // Filtering out bots and other ineligible members
         .into_iter()
-        .filter(|m| {
-            !m.user.bot
-                && (m.roles.contains(&first_year_role) || m.roles.contains(&second_year_role))
-        })
+        .filter(|m| !m.user.bot && (m.roles.iter().any(|role| selected_roles.contains(role))))
         .collect();
 
     if eligible_members.is_empty() {
@@ -46,11 +62,13 @@ pub async fn random(ctx: Context<'_>) -> Result<(), Error> {
     let selected = {
         let mut rng = rand::thread_rng();
 
-        let mut selected: Vec<_> = available_members.into_iter().choose_multiple(&mut rng, 5);
+        let mut selected: Vec<_> = available_members
+            .into_iter()
+            .choose_multiple(&mut rng, count);
 
-        if selected.len() < 5 {
+        if selected.len() < count {
             // If not enough members are available, fetch recently picked members
-            let remaining_needed = 5 - selected.len();
+            let remaining_needed = count - selected.len();
 
             let selected_ids: HashSet<UserId> = selected.iter().map(|m| m.user.id).collect();
 
@@ -81,7 +99,8 @@ pub async fn random(ctx: Context<'_>) -> Result<(), Error> {
             // If all eligible members have been picked atleast once, clear the recently picked set
             recent_random_picks.clear();
         }
-    }
+    } // guard dropped here, mutex unlocked
+    ctx.data().save_recent_picks();
     ctx.say(format!(
         "Pinging {} members: {}",
         selected.len(),
