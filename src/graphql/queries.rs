@@ -20,7 +20,9 @@ use chrono::{Local, NaiveDate};
 use serde_json::Value;
 use tracing::debug;
 
-use crate::graphql::models::{AttendanceRecord, LeaveCountRecord, Member, MemberSummary};
+use crate::graphql::models::{
+    AttendanceRecord, LeaveCountRecord, LeaveRecordWithMessage, Member, MemberSummary,
+};
 
 use super::GraphQLClient;
 
@@ -207,9 +209,15 @@ impl GraphQLClient {
             (present as f32 * 100.0) / total_attendance as f32
         };
 
-        let total_days = (end_date - start_date).num_days().max(1);
+        let total_days = (end_date - start_date).num_days() + 1;
 
-        let update_percent = (updates as f32 * 100.0) / total_days as f32;
+        if total_days < 0 {
+            return Err(anyhow!("end_date must be on/after start_date"));
+        }
+
+        let total_days = (total_days + 1).max(1) as f32;
+
+        let update_percent = (updates as f32 * 100.0) / total_days;
 
         let summary = MemberSummary {
             present_percent: attendance_percent,
@@ -263,9 +271,56 @@ impl GraphQLClient {
 
         let leaves: LeaveCountRecord = LeaveCountRecord {
             discord_id: discord_id.to_string(),
-            leave_count: json["data"]["members"]["leaveCount"].as_i64().unwrap_or(0) as i32,
+            leave_count: json["data"]["member"]["leaveCount"].as_i64().unwrap_or(0) as i32,
         };
 
         Ok(leaves)
+    }
+
+    pub async fn check_leave(&self, message_id: u64) -> anyhow::Result<LeaveRecordWithMessage> {
+        let query = r#"
+            query($message_id: String!) {
+                leaveByMessageId(
+                    messageId: $message_id
+                ) {
+                    discordId
+                    fromDate
+                    duration
+                    messageId
+                    approvedBy
+                    appliedAt
+                }
+            }
+        "#;
+
+        let variables = serde_json::json!({
+            "message_id": message_id.to_string()
+        });
+
+        let response = self
+            .http()
+            .post(self.root_url())
+            .bearer_auth(self.api_key())
+            .json(&serde_json::json!({
+                "query": query,
+                "variables": variables
+            }))
+            .send()
+            .await?;
+
+        let json: serde_json::Value = response.json().await?;
+
+        if let Some(errors) = json.get("errors") {
+            anyhow::bail!("GraphQL errors: {:#}", errors);
+        }
+
+        let leave_value = json
+            .get("data")
+            .and_then(|data| data.get("leaveByMessageId"))
+            .ok_or_else(|| anyhow::anyhow!("Missing data.leaveByMessageId"))?;
+
+        let leave: LeaveRecordWithMessage = serde_json::from_value(leave_value.clone())?;
+
+        Ok(leave)
     }
 }

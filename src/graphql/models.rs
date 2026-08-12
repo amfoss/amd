@@ -87,9 +87,17 @@ pub struct LeaveRecord {
     #[serde(rename = "fromDate")]
     pub from_date: NaiveDate,
     pub duration: i32,
-    pub reason: String,
+    pub reason: Option<String>,
     #[serde(rename = "approvedBy")]
     pub approved_by: Option<String>,
     #[serde(rename = "appliedAt")]
     pub applied_at: NaiveDateTime,
+}
+
+#[derive(Debug, Deserialize, Clone)]
+pub struct LeaveRecordWithMessage {
+    #[serde(flatten)]
+    pub leave: LeaveRecord,
+    #[serde(rename = "messageId")]
+    pub message_id: String,
 }

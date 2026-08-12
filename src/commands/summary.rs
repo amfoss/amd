@@ -12,6 +12,7 @@ pub async fn member_summary(
     #[description = "Start Date (YYYY-MM-DD)"] start_date: Option<NaiveDate>,
     #[description = "End Date (YYYY-MM-DD)"] end_date: Option<NaiveDate>,
 ) -> Result<(), Error> {
+    ctx.defer().await?;
     let discord_id = member.id.get().to_string();
 
     // take present date automatically and give this month's date and summary if both
@@ -45,6 +46,9 @@ pub async fn member_summary(
             );
         }
     };
+    if start_date > end_date {
+        return Err(anyhow::anyhow!("start_date must be on/before end_date").into());
+    }
 
     let leaves: LeaveCountRecord = ctx
         .data()
@@ -68,7 +72,7 @@ pub async fn member_summary(
         **Updates 📝**\n\
          • Consistency: **{:.1}%** \n\n\
          **Leave Summary 📄**\n\
-         • Total Leaves: **{}**",
+         • Total Leave Days: **{}**",
             discord_id,
             start_date,
             end_date,
@@ -80,6 +84,8 @@ pub async fn member_summary(
     let lab_channel_id = ChannelId::new(THE_LAB_CHANNEL_ID);
     lab_channel_id
         .send_message(ctx.http(), CreateMessage::new().add_embed(embed))
+        .await?;
+    ctx.say("✅ Member summary has been posted to the lab channel.")
         .await?;
 
     Ok(())

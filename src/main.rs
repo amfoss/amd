@@ -155,6 +155,8 @@ async fn event_handler(
 ) -> Result<(), Error> {
     match event {
         FullEvent::ReactionAdd { add_reaction } => {
+            handle_reaction(ctx, add_reaction, data, true).await?;
+
             if add_reaction.user_id == Some(ctx.cache.current_user().id) {
                 return Ok(());
             }
@@ -174,31 +176,34 @@ async fn event_handler(
 
             let message = channel_id.message(ctx, message_id).await?;
 
-            if let Some(embed) = message.embeds.first() {
-                if let Some(title) = &embed.title {
-                    if title.contains("📝 Leave Request") {
-                        if let Some(description) = &embed.description {
-                            if let Some(line) = description.lines().find(|l| l.contains("User:")) {
-                                let discord_id = line
-                                    .replace("**User:**", "")
-                                    .replace("<@", "")
-                                    .replace(">", "")
-                                    .trim()
-                                    .to_string();
+            let details = data.graphql_client.check_leave(message_id.get()).await?;
 
-                                data.graphql_client
-                                    .approve_leave(&discord_id, &reacted_by_id.get().to_string())
-                                    .await?;
+            let discord_id = &details.leave.discord_id;
+            let from_date = details.leave.from_date;
 
-                                message
-                                    .reply(
-                                        ctx,
-                                        format!("✅ Leave approved by <@{}>", reacted_by_id.get()),
-                                    )
-                                    .await?;
-                            }
-                        }
-                    }
+            let approver_id = reacted_by_id.get().to_string();
+
+            if approver_id == *discord_id {
+                message
+                    .reply(ctx, "❌ You cannot approve your own leave.")
+                    .await?;
+                return Ok(());
+            }
+
+            match data
+                .graphql_client
+                .approve_leave(discord_id, from_date, &approver_id)
+                .await
+            {
+                Ok(_) => {
+                    message
+                        .reply(ctx, format!("✅ Leave approved by <@{}>", approver_id))
+                        .await?;
+                }
+                Err(err) => {
+                    eprintln!("approve_leave failed: {:?}", err);
+
+                    message.reply(ctx, "❌ Failed to approve leave.").await?;
                 }
             }
         }

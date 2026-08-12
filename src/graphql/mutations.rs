@@ -4,29 +4,29 @@ use serde_json::Value;
 use tracing::debug;
 
 use super::GraphQLClient;
-use chrono::{Local, NaiveDate};
+use chrono::NaiveDate;
 
 impl GraphQLClient {
     pub async fn apply_leave(
         &self,
         discord_id: &str,
+        message_id: &u64,
         start_date: NaiveDate,
         duration: i32,
-        reason: String,
+        reason: &str,
     ) -> anyhow::Result<LeaveRecord> {
-        let today = Local::now().naive_local();
         let query = r#"
-            mutation($discord_id: String!, $start_date: String!, $duration: Int!, $reason: String, $today: String) {
+            mutation($discord_id: String!, $start_date: String!, $duration: Int!, $reason: String, $message_id: String) {
             leaveApplication(
                 discordId: $discord_id,
                 fromDate: $start_date,
                 duration: $duration,
                 reason: $reason,
-                appliedAt : $today
+                messageId: $message_id
             ) {
                 discordId,
                 fromDate,
-                duration,
+                duration,   
                 reason,
                 approvedBy,
                 appliedAt
@@ -39,7 +39,7 @@ impl GraphQLClient {
             "start_date": start_date.format("%Y-%m-%d").to_string(),
             "duration": duration,
             "reason": reason,
-            "today" : today.format("%Y-%m-%dT%H:%M:%S").to_string()
+            "message_id": message_id.to_string()
         });
 
         debug!("Sending query {}", query);
@@ -73,14 +73,15 @@ impl GraphQLClient {
     pub async fn approve_leave(
         &self,
         discord_id: &str,
+        from_date: NaiveDate,
         approved_by: &str,
     ) -> anyhow::Result<LeaveRecord> {
         let query = r#"
-            mutation($discord_id: String!, $mentor_discord_id : String!) {
+            mutation($discord_id: String!, $mentor_discord_id : String!, $from_date : String!) {
             approveLeave(
                 discordId: $discord_id,
                 approvedBy: $mentor_discord_id,
-                
+                fromDate: $from_date                
             ) {
                 discordId,
                 fromDate, 
@@ -94,7 +95,8 @@ impl GraphQLClient {
 
         let variables = serde_json::json!({
             "discord_id": discord_id,
-            "mentor_discord_id" : approved_by
+            "mentor_discord_id" : approved_by,
+            "from_date": from_date.format("%Y-%m-%d").to_string()
         });
 
         debug!("Sending query {}", query);
@@ -116,11 +118,15 @@ impl GraphQLClient {
             .json()
             .await
             .context("Failed to parse response JSON")?;
+
+        if let Some(errors) = json.get("errors") {
+            anyhow::bail!("GraphQL errors: {}", errors);
+        }
+
         let leave_value = json["data"]["approveLeave"].clone();
 
         let leave: LeaveRecord =
             serde_json::from_value(leave_value).context("Failed to deserialize LeaveRecord")?;
-
         Ok(leave)
     }
 }
