@@ -52,6 +52,9 @@ pub struct Member {
     pub track: Option<String>,
     pub year: Option<i32>,
     pub status: Option<MemberStatus>,
+    #[serde(rename = "groupId")]
+    pub group_id: Option<i32>,
+    pub email: String,
 }
 
 #[derive(Debug, Deserialize, Clone)]

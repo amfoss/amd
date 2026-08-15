@@ -18,6 +18,7 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 //! A trait to define a job that needs to be executed regularly, for example checking for status updates daily.
 mod lab_attendance;
 mod status_update;
+mod status_update_mirror;
 
 use std::fmt::{self, Debug};
 
@@ -26,6 +27,7 @@ use async_trait::async_trait;
 use lab_attendance::PresenseReport;
 use serenity::client::Context;
 use status_update::StatusUpdateReport;
+use status_update_mirror::MirrorNewUpdates;
 use tokio::time::Duration;
 
 use crate::graphql::GraphQLClient;
@@ -52,5 +54,9 @@ impl Debug for Box<dyn Task> {
 /// Analogous to [`crate::commands::get_commands`], every task that is defined
 /// must be included in the returned vector in order for it to be scheduled.
 pub fn get_tasks() -> Vec<Box<dyn Task>> {
-    vec![Box::new(PresenseReport), Box::new(StatusUpdateReport)]
+    vec![
+        Box::new(PresenseReport),
+        Box::new(StatusUpdateReport),
+        Box::new(MirrorNewUpdates),
+    ]
 }

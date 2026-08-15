@@ -40,7 +40,11 @@ use serenity::{
 use trace::{setup_tracing, ReloadHandle};
 use tracing::{debug, info, instrument};
 
-use std::collections::HashMap;
+use std::{
+    collections::{HashMap, HashSet},
+    path::PathBuf,
+    sync::{Arc, Mutex},
+};
 
 type Error = Box<dyn std::error::Error + Send + Sync>;
 type Context<'a> = PoiseContext<'a, Data, Error>;
@@ -49,18 +53,47 @@ type Context<'a> = PoiseContext<'a, Data, Error>;
 #[derive(Clone)]
 struct Data {
     reaction_roles: HashMap<ReactionType, RoleId>,
+    recent_random_picks: Arc<Mutex<HashSet<UserId>>>,
+    recent_picks_path: PathBuf,
     log_reload_handle: ReloadHandle,
     graphql_client: GraphQLClient,
 }
 
 impl Data {
     /// Returns a new [`Data`] with an empty `reaction_roles` field and the passed-in `reload_handle`.
-    fn new(reload_handle: ReloadHandle, root_url: String, api_key: String) -> Self {
+    fn new(
+        reload_handle: ReloadHandle,
+        root_url: String,
+        api_key: String,
+        recent_picks_path: String,
+    ) -> Self {
+        let recent_picks_path = PathBuf::from(recent_picks_path);
+        let recent_random_picks = Arc::new(Mutex::new(Self::load_recent_picks(&recent_picks_path)));
         Data {
             reaction_roles: HashMap::new(),
+            recent_random_picks,
+            recent_picks_path,
             log_reload_handle: reload_handle,
             graphql_client: GraphQLClient::new(root_url, api_key),
         }
+    }
+
+    fn load_recent_picks(path: &PathBuf) -> HashSet<UserId> {
+        std::fs::read_to_string(path)
+            .ok()
+            .and_then(|s| serde_json::from_str(&s).ok())
+            .unwrap_or_default()
+    }
+
+    fn save_recent_picks(&self) {
+        let picks = self.recent_random_picks.lock().unwrap();
+
+        if let Some(parent) = self.recent_picks_path.parent() {
+            std::fs::create_dir_all(parent).unwrap();
+        }
+
+        let json = serde_json::to_string(&*picks).unwrap();
+        std::fs::write(&self.recent_picks_path, json).unwrap();
     }
 }
 
@@ -99,6 +132,7 @@ fn prepare_data(config: &Config, reload_handle: ReloadHandle) -> Data {
         reload_handle,
         config.root_url.clone(),
         config.api_key.clone(),
+        config.recent_picks_path.clone(),
     );
     data.populate_with_reaction_roles();
     data
@@ -107,7 +141,9 @@ fn prepare_data(config: &Config, reload_handle: ReloadHandle) -> Data {
 async fn build_client(config: &Config, data: Data) -> Result<Client, anyhow::Error> {
     ClientBuilder::new(
         config.discord_token.clone(),
-        GatewayIntents::non_privileged() | GatewayIntents::MESSAGE_CONTENT,
+        GatewayIntents::non_privileged()
+            | GatewayIntents::MESSAGE_CONTENT
+            | GatewayIntents::GUILD_MEMBERS,
     )
     .framework(build_framework(
         config.owner_id,
@@ -210,6 +246,54 @@ async fn event_handler(
 
         FullEvent::ReactionRemove { removed_reaction } => {
             handle_reaction(ctx, removed_reaction, data, false).await?;
+        }
+
+
+        FullEvent::GuildMemberRemoval {
+            guild_id: _,
+            user,
+            member_data_if_available: Some(member),
+        } => {
+            let roles: Vec<String> = member
+                .roles
+                .iter()
+                .filter(|r| r.get() != member.guild_id.get())
+                .map(|r| r.get().to_string())
+                .collect();
+
+            if let Err(e) = data
+                .graphql_client
+                .save_member_roles(user.id.to_string(), roles)
+                .await
+            {
+                println!("Failed to save roles: {:?}", e);
+            }
+        }
+        FullEvent::GuildMemberAddition { new_member } => {
+            let (exists, roles) = match data
+                .graphql_client
+                .get_member_roles(new_member.user.id.to_string())
+                .await
+            {
+                Ok(r) => r,
+                Err(e) => {
+                    println!("Failed to fetch roles: {:?}", e);
+                    (false, vec![])
+                }
+            };
+
+            if let Ok(member) = new_member.guild_id.member(ctx, new_member.user.id).await {
+                // restore roles
+                for role in roles {
+                    if let Ok(role_id) = role.parse::<u64>() {
+                        let _ = member.add_role(ctx, RoleId::new(role_id)).await;
+                    }
+                }
+                // probated role
+                if exists {
+                    let _ = member.add_role(ctx, RoleId::new(1484798446228475905)).await;
+                }
+            }
         }
 
         _ => {}
