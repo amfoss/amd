@@ -248,7 +248,6 @@ async fn event_handler(
             handle_reaction(ctx, removed_reaction, data, false).await?;
         }
 
-
         FullEvent::GuildMemberRemoval {
             guild_id: _,
             user,

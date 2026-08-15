@@ -51,7 +51,7 @@ impl Default for Config {
             api_key: std::env::var("AMD_API_KEY").expect("AMD_API_KEY was not found in env"),
             recent_picks_path: std::env::var("RECENT_PICKS_PATH")
                 .unwrap_or_else(|_| String::from("data/recent_picks.json")),
-      }
+        }
     }
 }
 
