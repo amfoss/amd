@@ -278,10 +278,7 @@ impl GraphQLClient {
         Ok(leaves)
     }
 
-    pub async fn check_leave(
-        &self,
-        message_id: u64
-    ) -> anyhow::Result<LeaveRecordWithMessage> {
+    pub async fn check_leave(&self, message_id: u64) -> anyhow::Result<LeaveRecordWithMessage> {
         let query = r#"
             query($message_id: String!) {
                 leaveByMessageId(
@@ -298,8 +295,8 @@ impl GraphQLClient {
         "#;
 
         let variables = serde_json::json!({
-            "message_id": message_id.to_string()
-            });
+        "message_id": message_id.to_string()
+        });
 
         let response = self
             .http()
@@ -405,5 +402,5 @@ impl GraphQLClient {
             .map(|s| s.to_string())
             .collect();
         Ok((exists, roles))
-   }
+    }
 }

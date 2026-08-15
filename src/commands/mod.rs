@@ -3,7 +3,6 @@ mod random;
 mod set_log_level;
 mod summary;
 
-
 use crate::commands::apply_leave::apply_leave;
 use crate::commands::random::random;
 use crate::commands::set_log_level::set_log_level;
