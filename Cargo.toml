@@ -17,3 +17,7 @@ dotenv = "0.15.0"
 serenity = { version = "0.12.4", features = ["chrono"] }
 poise = "0.6.1"
 tracing-subscriber = { version = "0.3.20", features = ["env-filter"] }
+imap = "3.0.0-alpha.12"
+mailparse = "0.15"
+html2text = "0.12"
+rand = "0.8.5"
