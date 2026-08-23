@@ -17,6 +17,7 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 */
 use std::collections::HashMap;
 
+use chrono::Datelike;
 use serenity::all::{CacheHttp, ChannelId, Context, CreateEmbed, CreateMessage, GuildId};
 use serenity::async_trait;
 use tracing::instrument;
@@ -57,17 +58,97 @@ pub async fn status_update_check(ctx: Context, client: GraphQLClient) -> anyhow:
     let mut members = client.fetch_member_data(yesterday).await?;
     members.retain(|member| !matches!(member.year, Some(4) | None));
 
+    let processed_members = process_lives(&client, &members, now).await?;
     // naughty_list -> members who did not send updates
-    let (naughty_list, years_on_break) = categorize_members(&members);
+    let (naughty_list, years_on_break) = categorize_members(&processed_members);
 
     kick_lazy_bums(&ctx, naughty_list.values().flatten().cloned().collect()).await;
-    let embed = generate_embed(members, naughty_list, years_on_break).await?;
+    let embed = generate_embed(processed_members, naughty_list, years_on_break).await?;
     let msg = CreateMessage::new().embed(embed);
 
     let status_update_channel = ChannelId::new(STATUS_UPDATE_CHANNEL_ID);
     status_update_channel.send_message(ctx.http(), msg).await?;
 
     Ok(())
+}
+
+async fn process_lives(
+    client: &GraphQLClient,
+    members: &[Member],
+    now: chrono::DateTime<chrono_tz::Tz>,
+) -> anyhow::Result<Vec<Member>> {
+    let current_month = now.month() as i32;
+    let mut processed = Vec::new();
+
+    for member in members {
+        let Some(status) = &member.status else {
+            continue;
+        };
+        let Some(on_date) = &status.on_date else {
+            continue;
+        };
+
+        let (mut lives, mut recovery_streak, mut is_probation, mut last_month) =
+            if let Some(life) = &status.life_status {
+                (
+                    life.lives,
+                    life.recovery_streak,
+                    life.is_probation,
+                    life.last_reset_month,
+                )
+            } else {
+                (3, 0, false, current_month)
+            };
+
+        // 1. Monthly reset logic: if a new month has started, reset to 3 lives
+        if last_month != current_month {
+            lives = 3;
+            recovery_streak = 0;
+            is_probation = false;
+            last_month = current_month;
+        }
+
+        // 2. Evaluate yesterday's status update if not on status break
+        if !on_date.on_break {
+            if on_date.is_sent {
+                recovery_streak += 1;
+                if recovery_streak == 4 {
+                    recovery_streak = 0;
+                    if lives < 3 && !is_probation {
+                        lives += 1;
+                    }
+                }
+            } else {
+                recovery_streak = 0;
+                if lives > 0 {
+                    lives -= 1;
+                    if lives == 0 {
+                        is_probation = true;
+                    }
+                }
+            }
+        }
+
+        // 3. Save new life status back to Root
+        let updated_life = client
+            .update_life_status(
+                member.member_id,
+                lives,
+                recovery_streak,
+                is_probation,
+                last_month,
+            )
+            .await?;
+
+        // 4. Update the Member object
+        let mut updated_member = member.clone();
+        if let Some(s) = &mut updated_member.status {
+            s.life_status = Some(updated_life);
+        }
+        processed.push(updated_member);
+    }
+
+    Ok(processed)
 }
 
 fn categorize_members(members: &Vec<Member>) -> (GroupedMember, Vec<i32>) {
@@ -182,13 +263,14 @@ async fn kick_lazy_bums(ctx: &Context, naughty_list: Vec<Member>) {
     let guild_id = GuildId::new(AMFOSS_GUILD_ID);
 
     for member in naughty_list {
-        let consecutive_misses = member
+        let is_probation = member
             .status
             .as_ref()
-            .and_then(|s| s.consecutive_misses)
-            .unwrap_or(0);
+            .and_then(|s| s.life_status.as_ref())
+            .map(|l| l.is_probation)
+            .unwrap_or(false);
 
-        if consecutive_misses > 3 {
+        if is_probation {
             let Some(id_str) = member.discord_id.as_deref() else {
                 warn!("Cannot kick {}: Missing Discord ID", member.name);
                 return;
@@ -204,7 +286,7 @@ async fn kick_lazy_bums(ctx: &Context, naughty_list: Vec<Member>) {
                     return;
                 }
             };
-            let reason = "You have been kicked for not sending status updates, reach out to a mentor for further details.";
+            let reason = "You have been kicked for not sending status updates and losing all 3 lives. Reach out to a mentor for further details.";
 
             match guild_id
                 .kick_with_reason(ctx.http(), discord_id, reason)
@@ -212,7 +294,7 @@ async fn kick_lazy_bums(ctx: &Context, naughty_list: Vec<Member>) {
             {
                 Ok(_) => {
                     info!(
-                        "Kicked Member: {}, ID: {} for failing to send updates.",
+                        "Kicked Member: {}, ID: {} for failing to send updates (lost all lives).",
                         member.name, member.member_id
                     )
                 }
@@ -236,11 +318,16 @@ fn format_defaulters(naughty_list: &GroupedMember) -> String {
         }
 
         for member in missed_members {
-            let status = match member.status.as_ref().and_then(|s| s.consecutive_misses) {
-                None => ":zzz:",
-                Some(1) => ":x:",
-                Some(2) => ":x::x:",
-                Some(3) => ":x::x::x:",
+            let lives = member
+                .status
+                .as_ref()
+                .and_then(|s| s.life_status.as_ref())
+                .map(|l| l.lives)
+                .unwrap_or(3);
+            let status = match lives {
+                3 => ":heart::heart::heart:",
+                2 => ":heart::heart:",
+                1 => ":heart:",
                 _ => ":headstone:",
             };
             description.push_str(&format!("- {} | {}\n", member.name, status));
