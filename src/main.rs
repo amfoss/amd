@@ -192,7 +192,58 @@ async fn event_handler(
     match event {
         FullEvent::ReactionAdd { add_reaction } => {
             handle_reaction(ctx, add_reaction, data, true).await?;
+
+            if add_reaction.user_id == Some(ctx.cache.current_user().id) {
+                return Ok(());
+            }
+
+            if add_reaction.emoji != ReactionType::Unicode("✅".into()) {
+                return Ok(());
+            }
+
+            let channel_id = add_reaction.channel_id;
+            let message_id = add_reaction.message_id;
+
+            let reacted_by_id = if let Some(id) = add_reaction.user_id {
+                id
+            } else {
+                return Ok(());
+            };
+
+            let message = channel_id.message(ctx, message_id).await?;
+
+            let details = data.graphql_client.check_leave(message_id.get()).await?;
+
+            let discord_id = &details.leave.discord_id;
+            let from_date = details.leave.from_date;
+
+            let approver_id = reacted_by_id.get().to_string();
+
+            if approver_id == *discord_id {
+                message
+                    .reply(ctx, "❌ You cannot approve your own leave.")
+                    .await?;
+                return Ok(());
+            }
+
+            match data
+                .graphql_client
+                .approve_leave(discord_id, from_date, &approver_id)
+                .await
+            {
+                Ok(_) => {
+                    message
+                        .reply(ctx, format!("✅ Leave approved by <@{}>", approver_id))
+                        .await?;
+                }
+                Err(err) => {
+                    eprintln!("approve_leave failed: {:?}", err);
+
+                    message.reply(ctx, "❌ Failed to approve leave.").await?;
+                }
+            }
         }
+
         FullEvent::ReactionRemove { removed_reaction } => {
             handle_reaction(ctx, removed_reaction, data, false).await?;
         }
@@ -243,6 +294,7 @@ async fn event_handler(
                 }
             }
         }
+
         _ => {}
     }
 

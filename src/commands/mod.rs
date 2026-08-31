@@ -1,8 +1,12 @@
+mod apply_leave;
 mod random;
 mod set_log_level;
+mod summary;
 
+use crate::commands::apply_leave::apply_leave;
 use crate::commands::random::random;
 use crate::commands::set_log_level::set_log_level;
+use crate::commands::summary::member_summary;
 use serenity::all::RoleId;
 use tracing::{debug, instrument};
 
@@ -33,7 +37,13 @@ async fn amdctl(ctx: Context<'_>) -> Result<(), Error> {
 
 /// Returns a vector containg [Poise Commands][`poise::Command`]
 pub fn get_commands() -> Vec<poise::Command<Data, Error>> {
-    let commands = vec![amdctl(), set_log_level(), random()];
+    let commands = vec![
+        amdctl(),
+        set_log_level(),
+        random(),
+        member_summary(),
+        apply_leave(),
+    ];
     debug!(commands = ?commands.iter().map(|c| &c.name).collect::<Vec<_>>());
     commands
 }
