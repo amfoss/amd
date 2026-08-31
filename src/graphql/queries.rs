@@ -20,7 +20,7 @@ use chrono::{Local, NaiveDate};
 use serde_json::Value;
 use tracing::debug;
 
-use crate::graphql::models::{AttendanceRecord, Member};
+use crate::graphql::models::{AttendanceRecord, LifeStatus, Member};
 
 use super::GraphQLClient;
 
@@ -43,6 +43,13 @@ impl GraphQLClient {
                 maxStreak
               }
               consecutiveMisses
+              lifeStatus {
+                memberId
+                lives
+                recoveryStreak
+                isProbation
+                lastResetMonth
+              }
             }
             track
             year
@@ -224,5 +231,69 @@ impl GraphQLClient {
             .map(|s| s.to_string())
             .collect();
         Ok((exists, roles))
+    }
+
+    pub async fn update_life_status(
+        &self,
+        member_id: i32,
+        lives: i32,
+        recovery_streak: i32,
+        is_probation: bool,
+        last_reset_month: i32,
+    ) -> anyhow::Result<LifeStatus> {
+        let query = r#"
+        mutation($memberId: Int!, $lives: Int!, $recoveryStreak: Int!, $isProbation: Boolean!, $lastResetMonth: Int!) {
+            updateLifeStatus(input: {
+                memberId: $memberId
+                lives: $lives
+                recoveryStreak: $recoveryStreak
+                isProbation: $isProbation
+                lastResetMonth: $lastResetMonth
+            }) {
+                memberId
+                lives
+                recoveryStreak
+                isProbation
+                lastResetMonth
+            }
+        }"#;
+
+        let variables = serde_json::json!({
+            "memberId": member_id,
+            "lives": lives,
+            "recoveryStreak": recovery_streak,
+            "isProbation": is_probation,
+            "lastResetMonth": last_reset_month,
+        });
+
+        let response = self
+            .http()
+            .post(self.root_url())
+            .bearer_auth(self.api_key())
+            .json(&serde_json::json!({
+                "query": query,
+                "variables": variables
+            }))
+            .send()
+            .await?
+            .json::<serde_json::Value>()
+            .await?;
+
+        if response.get("errors").is_some() {
+            anyhow::bail!("GraphQL error: {:?}", response["errors"]);
+        }
+
+        let data = response
+            .get("data")
+            .and_then(|data| data.get("updateLifeStatus"))
+            .ok_or_else(|| {
+                anyhow::anyhow!(
+                    "Malformed response: Could not access updateLifeStatus from {}",
+                    response
+                )
+            })?;
+
+        let status: LifeStatus = serde_json::from_value(data.clone())?;
+        Ok(status)
     }
 }

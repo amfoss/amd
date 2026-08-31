@@ -40,6 +40,8 @@ pub struct MemberStatus {
     pub streak: Option<StatusStreak>,
     #[serde(rename = "consecutiveMisses")]
     pub consecutive_misses: Option<i32>,
+    #[serde(rename = "lifeStatus")]
+    pub life_status: Option<LifeStatus>,
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -65,4 +67,17 @@ pub struct AttendanceRecord {
     pub is_present: bool,
     #[serde(rename = "timeIn")]
     pub time_in: Option<String>,
+}
+
+#[derive(Debug, Deserialize, Clone)]
+pub struct LifeStatus {
+    #[serde(rename = "memberId")]
+    pub member_id: i32,
+    pub lives: i32,
+    #[serde(rename = "recoveryStreak")]
+    pub recovery_streak: i32,
+    #[serde(rename = "isProbation")]
+    pub is_probation: bool,
+    #[serde(rename = "lastResetMonth")]
+    pub last_reset_month: i32,
 }
