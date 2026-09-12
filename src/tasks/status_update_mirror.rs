@@ -41,10 +41,9 @@ pub struct EmailDetails {
 }
 
 use crate::ids::{
-    AI_STATUS_UPDATE_CHANNEL_ID, GROUP_FOUR_STATUS_UPDATE_CHANNEL_ID,
-    GROUP_ONE_STATUS_UPDATE_CHANNEL_ID, GROUP_THREE_STATUS_UPDATE_CHANNEL_ID,
-    GROUP_TWO_STATUS_UPDATE_CHANNEL_ID, MOBILE_STATUS_UPDATE_CHANNEL_ID, STATUS_UPDATE_CHANNEL_ID,
-    SYSTEMS_STATUS_UPDATE_CHANNEL_ID, WEB_STATUS_UPDATE_CHANNEL_ID,
+    GROUP_FOUR_STATUS_UPDATE_CHANNEL_ID, GROUP_ONE_STATUS_UPDATE_CHANNEL_ID,
+    GROUP_THREE_STATUS_UPDATE_CHANNEL_ID, GROUP_TWO_STATUS_UPDATE_CHANNEL_ID,
+    STATUS_UPDATE_CHANNEL_ID,
 };
 
 #[async_trait]
@@ -78,7 +77,7 @@ pub async fn mirror_new_updates(ctx: ClientContext, client: GraphQLClient) -> an
         let sender_email = email.from.trim().to_lowercase();
 
         if let Some(member) = members.get(&sender_email) {
-            if member.track.is_none() || member.group_id.is_none() {
+            if member.group_id.is_none() {
                 continue;
             }
 
@@ -86,7 +85,6 @@ pub async fn mirror_new_updates(ctx: ClientContext, client: GraphQLClient) -> an
                 &ctx,
                 member.name.clone(),
                 member.discord_id.as_deref(),
-                member.track.clone().unwrap(),
                 member.group_id.unwrap(),
                 email.body.clone(),
             )
@@ -170,19 +168,14 @@ async fn send_update(
     ctx: &ClientContext,
     name: String,
     discord_id: Option<&str>,
-    track: String,
     group: i32,
     content: String,
 ) -> anyhow::Result<()> {
-    let channel_id = match (track.as_str(), group) {
-        ("Inductee", 1) => GROUP_ONE_STATUS_UPDATE_CHANNEL_ID,
-        ("Inductee", 2) => GROUP_TWO_STATUS_UPDATE_CHANNEL_ID,
-        ("Inductee", 3) => GROUP_THREE_STATUS_UPDATE_CHANNEL_ID,
-        ("Inductee", 4) => GROUP_FOUR_STATUS_UPDATE_CHANNEL_ID,
-        ("AI", _) => AI_STATUS_UPDATE_CHANNEL_ID,
-        ("Web", _) => WEB_STATUS_UPDATE_CHANNEL_ID,
-        ("Mobile", _) => MOBILE_STATUS_UPDATE_CHANNEL_ID,
-        ("Systems", _) => SYSTEMS_STATUS_UPDATE_CHANNEL_ID,
+    let channel_id = match group {
+        1 => GROUP_ONE_STATUS_UPDATE_CHANNEL_ID,
+        2 => GROUP_TWO_STATUS_UPDATE_CHANNEL_ID,
+        3 => GROUP_THREE_STATUS_UPDATE_CHANNEL_ID,
+        4 => GROUP_FOUR_STATUS_UPDATE_CHANNEL_ID,
         _ => STATUS_UPDATE_CHANNEL_ID,
     };
 
